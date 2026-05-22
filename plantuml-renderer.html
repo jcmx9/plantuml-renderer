@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlantUML Gantt Renderer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Source Sans 3', system-ui, sans-serif; font-size: 13px; height: 100vh; display: flex; flex-direction: column; background: #eef1f4; overflow: hidden; }
+
+#app { display: flex; flex: 1; overflow: hidden; }
+
+#panel-left {
+  width: 290px; min-width: 160px; max-width: 60%;
+  display: flex; flex-direction: column;
+  background: #fff;
+  padding: 12px; gap: 8px; overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#splitter {
+  width: 5px; min-width: 5px; cursor: col-resize;
+  background: #d0d7de; flex-shrink: 0;
+  transition: background 0.15s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; overflow: visible; position: relative;
+}
+#splitter:hover, #splitter.dragging { background: #2980b9; }
+#btn-collapse {
+  position: absolute; top: 12px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #2980b9; color: #fff; border: none;
+  font-size: 9px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  z-index: 10; flex-shrink: 0;
+}
+#btn-collapse:hover { background: #1e6fa0; }
+#panel-left { transition: width 0.2s, padding 0.2s; }
+
+#panel-left h2 { font-size: 13px; font-weight: 700; color: #1e3a4c; letter-spacing: 0.02em; }
+
+#file-select {
+  width: 100%; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 4px;
+  font-size: 11.5px; color: #1e2d3d; background: #f8fafc; cursor: pointer;
+}
+#file-hint { font-size: 11px; color: #aaa; text-align: center; padding: 6px 0; }
+
+.section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: #8a9bb0; letter-spacing: 0.06em; margin-top: 4px;
+}
+
+.ctrl-row { display: flex; gap: 6px; align-items: center; }
+.ctrl-row span { font-size: 11px; color: #666; width: 26px; }
+
+input[type="date"] {
+  flex: 1; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 4px 6px; font-size: 11.5px; color: #1e2d3d;
+}
+input[type="date"]:focus { outline: none; border-color: #2980b9; }
+
+.zoom-row { display: flex; gap: 6px; align-items: center; }
+.zoom-btn {
+  width: 28px; height: 28px; border: 1px solid #d0d7de; border-radius: 4px;
+  background: #f8fafc; cursor: pointer; font-size: 17px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; color: #1e2d3d;
+  user-select: none;
+}
+.zoom-btn:hover { background: #eef1f4; }
+#zoom-label { font-size: 11px; color: #8a9bb0; flex: 1; text-align: center; }
+#btn-zoom-reset { font-size: 11px; padding: 4px 8px; }
+
+hr { border: none; border-top: 1px solid #eef1f4; }
+
+.btn {
+  width: 100%; padding: 8px; border: none; border-radius: 5px;
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: background 0.15s; text-align: center;
+}
+.btn-primary { background: #2980b9; color: #fff; }
+.btn-primary:hover { background: #216fa0; }
+.btn-secondary { background: #eef1f4; color: #1e2d3d; }
+.btn-secondary:hover { background: #dce3e8; }
+
+#panel-right { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+
+#warn-banner {
+  flex-shrink: 0; display: none; max-height: 120px; overflow-y: auto;
+  background: #fff0f0; color: #c0392b; border-bottom: 1px solid #c0392b;
+  padding: 6px 12px; font-size: 12px; line-height: 1.5;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+#warn-banner .warn-fatal { font-weight: 700; }
+#warn-banner .warn-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#warn-banner .warn-more { opacity: 0.7; font-style: italic; }
+
+#source-preview {
+  display: none; max-height: 220px; overflow: auto;
+  border: 1px solid #d0d7de; border-radius: 4px;
+  background: #f8fafc; margin-top: 4px;
+}
+#source-preview pre {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px; line-height: 1.5; padding: 0; margin: 0;
+}
+.src-line { display: flex; padding-left: 0; border-left: 2px solid transparent; }
+.src-line-error { background: #fff0f0; border-left-color: #c0392b; }
+.src-ln {
+  display: inline-block; width: 28px; flex-shrink: 0;
+  color: #aaa; text-align: right; padding-right: 6px; user-select: none;
+}
+.src-txt { white-space: pre; color: #1e2d3d; }
+.src-line-error .src-txt { color: #c0392b; }
+
+#svg-wrap { background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); overflow: auto; flex: 1; }
+
+#gantt-tooltip {
+  position: fixed; display: none; pointer-events: none; z-index: 9999;
+  background: #1a2d3d; color: #e0e8f0; border-radius: 6px;
+  padding: 9px 14px; font-size: 12.5px; line-height: 1.7;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4); white-space: nowrap;
+}
+#gantt-tooltip b { display: block; font-size: 13.5px; color: #fff; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="warn-banner"></div>
+<div id="app">
+
+  <div id="panel-left" style="width:290px">
+    <h2>PlantUML Gantt Renderer</h2>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.2</div>
+
+    <div class="section-label">Datei</div>
+    <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
+    <select id="file-select"><option value="">— Datei wählen —</option></select>
+    <button class="btn btn-secondary" id="btn-reload">↺ Neu laden</button>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-autoreload" checked> Auto-Reload bei Änderung
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-milestones" checked> Meilensteine anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-notes" checked> Notizen anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-deps" checked> Abhängigkeiten anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-critical"> Kritischen Pfad hervorheben
+    </label>
+    <label title="Fixiert die Skala auf BAR_H px/Tag — reproduzierbarer Export, kein freier Zoom." style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-fixed-zoom"> 100%-Zoom (Skala fixiert)
+    </label>
+    <div style="display:flex;gap:4px;margin-top:2px">
+      <button class="btn btn-secondary" id="btn-collapse-all" style="font-size:11px;padding:4px 6px">Alle einklappen</button>
+      <button class="btn btn-secondary" id="btn-expand-all" style="font-size:11px;padding:4px 6px">Alle ausklappen</button>
+    </div>
+    <div id="file-hint">(.puml-Dateien)</div>
+
+    <hr>
+    <div class="section-label">Zeitfenster</div>
+    <div class="ctrl-row"><span>Von</span><input type="date" id="date-from"></div>
+    <div class="ctrl-row"><span>Bis</span><input type="date" id="date-to"></div>
+
+    <div class="section-label">Zoom</div>
+    <div class="zoom-row">
+      <button class="zoom-btn" id="btn-zoom-out" title="Herauszoomen">−</button>
+      <button class="zoom-btn" id="btn-zoom-in" title="Hineinzoomen">+</button>
+      <span id="zoom-label">—</span>
+      <button class="btn btn-secondary" id="btn-zoom-reset" style="width:auto">Reset</button>
+    </div>
+    <button class="btn btn-secondary" id="btn-fit-page">An Seite anpassen</button>
+
+    <hr>
+    <button class="btn btn-secondary" id="btn-export-svg">Export SVG</button>
+    <button class="btn btn-secondary" id="btn-export-png">Export PNG</button>
+    <button class="btn btn-secondary" id="btn-export-pdf">Drucken A4 (PDF)</button>
+
+    <div id="source-preview"><pre id="source-preview-pre"></pre></div>
+  </div>
+
+  <div id="splitter"><button id="btn-collapse" title="Panel einklappen">◀</button></div>
+  <div id="panel-right">
+    <div id="svg-wrap"></div>
+  </div>
+</div>
+<div id="gantt-tooltip"></div>
+<script>
+// ─── Date Utilities ───────────────────────────────────────────────────────────
+
+function parseDate(str) {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + Math.round(n));
+  return d;
+}
+
+function parseDuration(num, unit) {
+  return unit.toLowerCase().startsWith('week') ? parseInt(num, 10) * 7 : parseInt(num, 10);
+}
+
+function addWorkDays(date, n, closedDates, closedWeekdays) {
+  if (!closedDates.size && !closedWeekdays.size) return addDays(date, n);
+  // Schutz vor Endlosschleife bei kaputtem Input (NaN, negativ): fallback auf einfaches addDays.
+  if (!Number.isFinite(n) || n < 0) return addDays(date, n);
+  let cur = new Date(date);
+  let remaining = n;
+  while (remaining > 0) {
+    cur = addDays(cur, 1);
+    if (!closedWeekdays.has(cur.getDay()) && !closedDates.has(dateToISO(cur))) remaining--;
+  }
+  return cur;
+}
+
+const WEEKDAY_MAP = { monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6, sunday:0 };
+
+function daysBetween(a, b) {
+  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((ub - ua) / 86400000);
+}
+
+function dateToISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+// ─── Parser ──────────────────────────────────────────────────────────────────
+
+function parsePlantUML(text) {
+  // Block-Kommentar /'…'/ vor dem Zeilen-Split entfernen, damit auch
+  // mehrzeilige Kommentare zuverlässig verschwinden. Non-greedy.
+  const cleaned = text.replace(/\/'[\s\S]*?'\//g, '');
+  const lines = cleaned.split('\n').map(l => l.trim());
+  const rawItems = [];
+  const parseWarnings = [];
+  let title = '';
+  let projectStart = null;
+  const closedDates    = new Set();
+  const closedWeekdays = new Set();
+  let lastTaskName = null;
+  let pendingNoteTarget = null;
+  let pendingNoteLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    const lineNum = i + 1;
+    const rawLine = line;
+    // Multi-Line-Note: alles bis 'end note' sammeln (vor allem anderen, auch leere Zeilen).
+    if (pendingNoteTarget) {
+      if (/^end\s+note\s*$/i.test(line)) {
+        pendingNoteTarget.note = pendingNoteLines.join('\n');
+        pendingNoteTarget = null;
+        pendingNoteLines = [];
+      } else {
+        pendingNoteLines.push(line);
+      }
+      continue;
+    }
+    if (!line || /^@|^<style|^<\/style|^skinparam|^scale\b|^printscale\b/i.test(line)) continue;
+    try {
+
+    // Alias preprocessing: [Display] as [alias] rest → rewrite to [alias] rest, store label
+    let _aliasLabel = null;
+    { const am = line.match(/^\[([^\]]+)\]\s+as\s+\[([^\]]+)\]\s+([\s\S]*)/i);
+      if (am) { _aliasLabel = am[1].trim(); line = '[' + am[2].trim() + '] ' + am[3].trim(); } }
+    // then [Display] as [alias] rest → rewrite to then [alias] rest, store label
+    if (!_aliasLabel) {
+      const tam = line.match(/^(then\s+)\[([^\]]+)\]\s+as\s+\[([^\]]+)\]\s+([\s\S]*)/i);
+      if (tam) { _aliasLabel = tam[2].trim(); line = tam[1] + '[' + tam[3].trim() + '] ' + tam[4].trim(); }
+    }
+    const push = item => {
+      item.sourceLine = lineNum;
+      rawItems.push(item);
+      if (_aliasLabel) item.label = _aliasLabel;
+      return item;
+    };
+
+    let m;
+
+    // Code-Kommentar: jedes Apostroph-Präfix wird komplett ignoriert (PlantUML-Konvention).
+    if (line.startsWith("'")) continue;
+
+    // Diagramm-Notiz (PlantUML-Standard): `note bottom` + Text-Block + `end note`.
+    // Hängt automatisch an das zuletzt definierte Task/Milestone.
+    if (/^note\s+bottom\s*$/i.test(line)) {
+      pendingNoteTarget = rawItems.findLast(it => it.type === 'task' || it.type === 'milestone');
+      pendingNoteLines = [];
+      continue;
+    }
+
+    // Title
+    if ((m = line.match(/^title\s+(.*)/i))) { title = m[1].trim(); continue; }
+
+    // Project starts
+    if ((m = line.match(/^[Pp]roject\s+starts?\s+(\d{4}-\d{2}-\d{2})/))) {
+      projectStart = parseDate(m[1]); continue;
+    }
+
+    // Closed weekday: saturday are closed
+    if ((m = line.match(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+are?\s+closed/i))) {
+      closedWeekdays.add(WEEKDAY_MAP[m[1].toLowerCase()]); continue;
+    }
+
+    // Closed date: 2026-12-25 is closed
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+closed/i))) {
+      closedDates.add(m[1]); continue;
+    }
+
+    // Dependency arrow: [A] -> [B]
+    if ((m = line.match(/^\[([^\]]+)\]\s*->\s*\[([^\]]+)\]/))) {
+      push({ type: 'dep', from: m[1].trim(), to: m[2].trim() }); continue;
+    }
+
+    // Color modifier: [Task] is colored in #hex/TextColor
+    if ((m = line.match(/^\[([^\]]+)\]\s+is\s+colored\s+in\s+([^\/\s]+)(?:\/(\S+))?/i))) {
+      const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
+      if (t) { t.barColor = m[2]; t.textColor = m[3] || null; }
+      continue;
+    }
+
+    // Progress modifier: [Task] is X% completed
+    if ((m = line.match(/^\[([^\]]+)\]\s+is\s+(\d+)%\s+completed/i))) {
+      const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
+      if (t) t.pct = Math.min(100, Math.max(0, +m[2])) / 100;
+      continue;
+    }
+
+    // Subsection: -- Name [2] --
+    if ((m = line.match(/^--\s*(.+?)\s+\[2\]\s*--$/))) {
+      push({ type: 'subsection', name: m[1], note: null }); continue;
+    }
+
+    // Section: -- Name --
+    if ((m = line.match(/^--\s*(.+?)\s*--$/))) {
+      push({ type: 'section', name: m[1], note: null }); continue;
+    }
+
+    // Milestone: [Name] happens DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+(\d{4}-\d{2}-\d{2})/))) {
+      push({ type: 'milestone', name: m[1], date: parseDate(m[2]), afterTask: null, offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s start
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+start/))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], afterWhat: 'start', offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s end + OFFSET
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], offset: parseDuration(m[3], m[4]), note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end/))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens on N days/weeks after [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], offset: parseDuration(m[2], m[3]), note: null }); continue;
+    }
+
+    // Task: [Name] starts DATE and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseDate(m[3]), duration: null, afterTask: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts DATE and lasts N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: null, duration: parseDuration(m[3], m[4]), afterTask: null, note: null }); continue;
+    }
+
+    // Task: [Name] lasts N unit (uses projectStart)
+    if ((m = line.match(/^\[([^\]]+)\]\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: projectStart || new Date(), end: null, duration: parseDuration(m[2], m[3]), afterTask: null, note: null }); continue;
+    }
+
+    // then [Task] lasts N unit (starts right after previous task)
+    if ((m = line.match(/^then\s+\[([^\]]+)\]\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      const prev = lastTaskName;
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: prev, offset: 0, duration: parseDuration(m[2], m[3]), note: null }); continue;
+    }
+
+    // Task: [Name] starts N days/weeks after [Other]'s end and lasts M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[4], offset: parseDuration(m[2], m[3]), duration: parseDuration(m[5], m[6]), note: null }); continue;
+    }
+
+    // Task: [Name] starts N days/weeks after [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[4], offset: parseDuration(m[2], m[3]), duration: 1, note: null }); continue;
+    }
+
+
+    // Task: [Name] starts at [Other]'s start + OFFSET and lasts N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start + OFFSET and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[5]),
+        afterTask: m[2], afterWhat: 'start', offset: parseDuration(m[3], m[4]), duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start and lasts N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start (no duration)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: 1, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end + OFFSET and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[5]),
+        afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end + OFFSET and lasts N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+        afterTask: m[2], offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end and lasts N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end (no duration → 1 day)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: 0, duration: 1, note: null }); continue;
+    }
+
+    // Fall-through: kein Pattern hat gegriffen → Heuristik für wahrscheinliche Tippfehler
+    const lbr = (line.match(/\[/g) || []).length;
+    const rbr = (line.match(/\]/g) || []).length;
+    let heuristicMatched = false;
+    if (lbr !== rbr) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Eckklammer-Imbalance' });
+      heuristicMatched = true;
+    } else if (/\d{4}-\d{1,2}-\d{1,2}/.test(line) && !/\b\d{4}-\d{2}-\d{2}\b/.test(line)) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Verdächtiges Datum (YYYY-MM-DD erwartet)' });
+      heuristicMatched = true;
+    } else if (/\b(starts|ends|lasts|happens)\b/i.test(line)) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Keyword ohne erkanntes Muster' });
+      heuristicMatched = true;
+    }
+    // Dummy-Task einfügen, damit Nachfolger die Referenz noch finden und kontrolliert
+    // als "unresolved" enden statt an den Projektanfang zurückzuspringen.
+    if (heuristicMatched) {
+      const nm = line.match(/^\[([^\]]+)\]/);
+      const hasKw = /\b(starts|ends|lasts|happens)\b/i.test(line);
+      if (nm && hasKw) {
+        rawItems.push({
+          type: 'task', name: nm[1].trim(),
+          start: null, end: null, afterTask: null, duration: null, note: null,
+          parseError: true, sourceLine: lineNum,
+        });
+      }
+    }
+    } catch (err) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Parse-Ausnahme: ' + (err.message || err) });
+    }
+  }
+
+  return { title, projectStart, rawItems, closedDates, closedWeekdays, parseWarnings };
+}
+
+// ─── Dependency Resolver ─────────────────────────────────────────────────────
+
+function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()) {
+  const map = {};
+  for (const it of items) {
+    if (it.type === 'task' || it.type === 'milestone') map[it.name] = it;
+  }
+
+  // Resolve absolute-start tasks that need end computed from duration
+  for (const it of items) {
+    if (it.type === 'task' && it.start && !it.end && it.duration != null)
+      it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays);
+  }
+
+  // Resolve dependency-based tasks (multi-pass for chains)
+  for (let pass = 0; pass < items.length + 2; pass++) {
+    let dirty = false;
+    for (const it of items) {
+      if (!it.afterTask) continue;
+      if (it.type === 'milestone' && it.date) continue;
+      if (it.type === 'task' && it.start) continue;
+
+      const dep = map[it.afterTask];
+      const depEnd = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
+      if (!depEnd) { dirty = true; continue; }
+
+      const s = addWorkDays(depEnd, it.offset || 0, closedDates, closedWeekdays);
+      if (it.type === 'milestone') {
+        it.date = s;
+      } else {
+        it.start = s;
+        if (!it.end) it.end = addWorkDays(s, it.duration || 1, closedDates, closedWeekdays);
+      }
+    }
+    if (!dirty) break;
+  }
+  // Detect circular or missing dependencies
+  const unresolved = items.filter(it =>
+    it.afterTask && it.type !== 'dep' &&
+    (it.type === 'milestone' ? !it.date : !it.start)
+  );
+  if (unresolved.length > 0) {
+    items._unresolvedDetails = unresolved.map(i => ({
+      name: i.label || i.name,
+      afterTask: i.afterTask,
+      sourceLine: i.sourceLine || 0,
+    }));
+  }
+  return items;
+}
+
+// ─── Critical Path (CPM, Slack=0) ─────────────────────────────────────────────
+
+function computeCriticalPath(rawItems) {
+  const nodes = {};
+  const order = {};
+  rawItems.forEach((it, idx) => {
+    if (it.type === 'task' && it.start && it.end) {
+      nodes[it.name] = { name: it.name, start: it.start, end: it.end, sourceLine: it.sourceLine || 0 };
+      order[it.name] = idx;
+    } else if (it.type === 'milestone' && it.date) {
+      nodes[it.name] = { name: it.name, start: it.date, end: it.date, sourceLine: it.sourceLine || 0 };
+      order[it.name] = idx;
+    }
+  });
+  const names = Object.keys(nodes);
+  if (names.length === 0) {
+    return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false };
+  }
+
+  const preds = {}, succs = {};
+  for (const n of names) { preds[n] = new Set(); succs[n] = new Set(); }
+  const addEdge = (from, to) => {
+    if (!nodes[from] || !nodes[to] || from === to) return;
+    preds[to].add(from);
+    succs[from].add(to);
+  };
+  for (const it of rawItems) {
+    if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
+      addEdge(it.afterTask, it.name);
+    }
+    if (it.type === 'dep') {
+      addEdge(it.from, it.to);
+    }
+  }
+  for (const n of names) {
+    if (preds[n].size > 0) continue;
+    const t = nodes[n];
+    let cand = null;
+    for (const a of names) {
+      if (a === n) continue;
+      const node = nodes[a];
+      if (node.end > t.start) continue;
+      if (order[a] >= order[n]) continue;
+      if (!cand
+          || nodes[cand].end < node.end
+          || (nodes[cand].end.getTime() === node.end.getTime() && order[cand] < order[a])) {
+        cand = a;
+      }
+    }
+    if (cand) addEdge(cand, n);
+  }
+
+  let globalStart = nodes[names[0]].start;
+  for (const n of names) if (nodes[n].start < globalStart) globalStart = nodes[n].start;
+  const ES = {}, EF = {}, dur = {};
+  for (const n of names) {
+    ES[n] = daysBetween(globalStart, nodes[n].start);
+    EF[n] = daysBetween(globalStart, nodes[n].end);
+    dur[n] = EF[n] - ES[n];
+  }
+
+  const indeg = {};
+  for (const n of names) indeg[n] = preds[n].size;
+  const queue = names.filter(n => indeg[n] === 0);
+  const topo = [];
+  while (queue.length) {
+    const n = queue.shift();
+    topo.push(n);
+    for (const s of succs[n]) {
+      indeg[s]--;
+      if (indeg[s] === 0) queue.push(s);
+    }
+  }
+  if (topo.length < names.length) {
+    const topoSet = new Set(topo);
+    const cycleDetails = names.filter(n => !topoSet.has(n))
+      .map(n => ({ name: n, sourceLine: nodes[n].sourceLine }));
+    return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
+  }
+
+  let projectEnd = EF[names[0]];
+  for (const n of names) if (EF[n] > projectEnd) projectEnd = EF[n];
+  const LF = {}, LS = {};
+  for (let i = topo.length - 1; i >= 0; i--) {
+    const n = topo[i];
+    if (succs[n].size === 0) {
+      LF[n] = projectEnd;
+    } else {
+      let minLS = Infinity;
+      for (const s of succs[n]) if (LS[s] < minLS) minLS = LS[s];
+      LF[n] = minLS;
+    }
+    LS[n] = LF[n] - dur[n];
+  }
+
+  const criticalNodes = new Set();
+  for (const n of names) {
+    if (Math.abs(LS[n] - ES[n]) < 0.5) criticalNodes.add(n);
+  }
+  const criticalEdges = new Set();
+  for (const from of criticalNodes) {
+    for (const to of succs[from]) {
+      if (criticalNodes.has(to)) criticalEdges.add(from + '→' + to);
+    }
+  }
+  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [] };
+}
+
+// ─── Time Scale ───────────────────────────────────────────────────────────────
+
+const MONTHS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+const DOW      = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const DOW_LONG = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const y1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - y1) / 86400000 + 1) / 7);
+}
+
+function getTicks(wStart, wEnd, band, projectStart, genericMode) {
+  const totalDays = daysBetween(wStart, wEnd);
+  const ticks = [];
+  function clip(d) { return Math.max(0, Math.min(totalDays, d)); }
+  function push(label, cur, next) {
+    const d0 = clip(daysBetween(wStart, cur));
+    const d1 = clip(daysBetween(wStart, next));
+    if (d1 > d0) ticks.push({ label, d0, d1 });
+  }
+  if (band === 'week') {
+    const weekOf = d => Math.floor(daysBetween(projectStart, d) / 7) + 1;
+    const offsetIntoWeek = ((daysBetween(projectStart, wStart) % 7) + 7) % 7;
+    let cur = addDays(wStart, -offsetIntoWeek);
+    while (cur < wEnd) {
+      const next = addDays(cur, 7);
+      push('W' + weekOf(cur), cur, next);
+      cur = next;
+    }
+  } else if (band === 'projectday' && projectStart) {
+    const dayOf = d => daysBetween(projectStart, d) + 1;
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      push('T' + dayOf(cur), cur, addDays(cur, 1));
+      cur = addDays(cur, 1);
+    }
+  } else if (band === 'year') {
+    let cur = new Date(wStart.getFullYear(), 0, 1);
+    while (cur < wEnd) {
+      const next = new Date(cur.getFullYear() + 1, 0, 1);
+      push(String(cur.getFullYear()), cur, next);
+      cur = next;
+    }
+  } else if (band === 'quarter') {
+    let cur = new Date(wStart.getFullYear(), Math.floor(wStart.getMonth() / 3) * 3, 1);
+    while (cur < wEnd) {
+      const q = Math.floor(cur.getMonth() / 3);
+      const next = new Date(cur.getFullYear(), (q + 1) * 3, 1);
+      push('Q' + (q + 1), cur, next);
+      cur = next;
+    }
+  } else if (band === 'month') {
+    let cur = new Date(wStart.getFullYear(), wStart.getMonth(), 1);
+    while (cur < wEnd) {
+      const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      push(MONTHS[cur.getMonth()], cur, next);
+      cur = next;
+    }
+  } else if (band === 'kw') {
+    const dow = wStart.getDay();
+    let cur = addDays(wStart, -(dow === 0 ? 6 : dow - 1));
+    while (cur < wEnd) {
+      const next = addDays(cur, 7);
+      push('KW ' + isoWeek(cur), cur, next);
+      cur = next;
+    }
+  } else if (band === 'day') {
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      // Im generic-Mode (Jahr 1900 = kein echtes Projektdatum) zeigt das day-Band T+N statt Kalendertag.
+      const label = genericMode && projectStart
+        ? 'T' + (daysBetween(projectStart, cur) + 1)
+        : String(cur.getDate());
+      push(label, cur, addDays(cur, 1));
+      cur = addDays(cur, 1);
+    }
+  }
+  return ticks;
+}
+
+// Wenn `Project starts …` nicht explizit gesetzt ist, leiten wir den Projektanfang aus dem
+// frühesten Task-Start (bzw. Milestone-Datum) ab — damit das projectday-Band immer sinnvolle T+N-Werte zeigt.
+function inferProjectStart(items) {
+  let min = null;
+  for (const it of items) {
+    const d = it.type === 'task' ? it.start : (it.type === 'milestone' ? it.date : null);
+    if (d && (!min || d < min)) min = d;
+  }
+  return min;
+}
+
+// Jahr + Monat immer; Quartal nie mit KW oder Tag; Tag nur < 28 Tage Fenster
+function getBands(ppd, totalDays, genericMode) {
+  if (genericMode) {
+    const showDay = totalDays < 28 || ppd >= 20;
+    return { bands: showDay ? ['week', 'day'] : ['week'], showDOW: false };
+  }
+  const showDay = totalDays < 28 || ppd >= 20;
+  const showKW  = ppd >= 5;
+  const showQtr = !showKW && totalDays > 90;
+  const showDOW = showDay && ppd >= 30;
+  const bands = ['year'];
+  if (showQtr) bands.push('quarter');
+  bands.push('month');
+  if (showKW)  bands.push('kw');
+  if (showDay) bands.push('day');
+  // projectday nur ohne DOW — sonst würde T+N zwischen Datum und Wochentag stehen.
+  if (showDay && !showDOW) bands.push('projectday');
+  return { bands, showDOW };
+}
+
+// ─── SVG Renderer ─────────────────────────────────────────────────────────────
+
+const C = {
+  sectionBg: '#1e3a4c', sectionFg: '#fff',
+  subsectionBg: '#dce8f2', subsectionFg: '#1e3a4c', subsectionAccent: '#2980b9',
+  headerBg1: '#2c6080', headerBg2: '#1e4d66', headerFg: '#fff',
+  taskBar: '#2980b9', taskFg: '#fff', taskFgOut: '#1e3a4c',
+  milestone: '#c0392b',
+  today: '#e74c3c',
+  rowBg: '#fff', rowAlt: '#f5f8fb',
+  grid: '#dce3e8', sep: '#c5cfd8',
+  note: '#999',
+};
+
+const LBL_MIN = 200;
+const LBL_MAX = 500;
+const NOTE_W  = 170;
+const ROW_H   = 24;
+const SEC_H   = 20;
+const SUB_H   = 18;
+const BAND_H  = 30;
+const BAR_H   = 14;
+const BAR_R   = 4;
+const FONT    = "'Source Sans 3',system-ui,sans-serif";
+const FS      = 12;
+const FS_SEC  = 13;
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function approxTextW(s, fs) { return s.length * fs * 0.58; }
+
+function effectiveLabelW(items) {
+  let max = LBL_MIN;
+  for (const it of items) {
+    if (it.type !== 'task' && it.type !== 'milestone') continue;
+    const name = it.label || it.name || '';
+    const w = approxTextW(name, FS) + 20;
+    if (w > max) max = w;
+  }
+  return Math.min(LBL_MAX, Math.round(max));
+}
+
+function contrastColor(hex) {
+  const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+  const lin = c => c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  const L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+  return 1.05/(L+0.05) >= (L+0.05)/0.088 ? '#fff' : '#1e3a4c';
+}
+
+function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true) {
+  const items = parsed.rawItems;
+  const totalDays = daysBetween(wStart, wEnd);
+  const tlW = totalDays * ppd;
+  const hasNotes = showNotes && items.some(i => i.note);
+  const noteW = hasNotes ? NOTE_W : 0;
+  const labelW = effectiveLabelW(items);
+
+  const genericMode = !!(parsed.projectStart && parsed.projectStart.getFullYear() === 1900);
+  // Effektiver Projektanfang: explizit aus der `.puml` oder implizit aus dem frühesten Task/Milestone.
+  const effectiveProjectStart = parsed.projectStart || inferProjectStart(items);
+  const { bands, showDOW } = getBands(ppd, totalDays, genericMode);
+  const showKW  = bands.includes('kw') || bands.includes('week');
+  const showDay = bands.includes('day');
+  const showQtr = bands.includes('quarter');
+  const hdrH = BAND_H * (bands.length + (showDOW ? 1 : 0));
+
+  // Assign y positions (dep items are arrows only — no row)
+  // Filter: items unterhalb einer collapsed Section werden ausgeblendet,
+  // der Section-Header selbst bleibt sichtbar.
+  let y = hdrH;
+  let curSection = null;
+  let activeCollapsed = false;
+  const rows = items.filter(item => item.type !== 'dep').filter(item => {
+    if (item.type === 'section') {
+      activeCollapsed = collapsedSections.has(item.name);
+      return true;
+    }
+    return !activeCollapsed;
+  }).map(item => {
+    if (item.type === 'section') curSection = item.name;
+    const h = item.type === 'section' ? SEC_H : item.type === 'subsection' ? SUB_H : ROW_H;
+    const barCenterY = y + h / 2;
+    const row = { ...item, y, h, barCenterY, section: curSection };
+    y += h;
+    return row;
+  });
+  const totalH = y;
+  const totalW = labelW + tlW + noteW;
+
+  const g = []; // SVG elements
+
+  g.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" data-hdrh="${hdrH}" data-labelw="${labelW}"`,
+         ` style="font-family:${FONT};font-size:${FS}px;display:block"`,
+         ` text-rendering="geometricPrecision">`);
+
+  // Background
+  g.push(`<rect width="${totalW}" height="${totalH}" fill="${C.rowBg}"/>`);
+
+  // Alternating row backgrounds
+  let alt = false;
+  for (const r of rows) {
+    if (r.type === 'section') { alt = false; continue; }
+    if (alt) g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.rowAlt}"/>`);
+    alt = !alt;
+  }
+
+  // Vertical grid lines: daily if showDay, weekly if showKW, else monthly
+  {
+    let gc, step;
+    if (showDay) {
+      gc = new Date(wStart); step = 'day';
+    } else if (showKW) {
+      const dow = wStart.getDay();
+      gc = addDays(wStart, -(dow === 0 ? 6 : dow - 1)); step = 'week';
+    } else {
+      gc = new Date(wStart.getFullYear(), wStart.getMonth(), 1); step = 'month';
+    }
+    while (gc < wEnd) {
+      const d = daysBetween(wStart, gc);
+      if (d > 0) {
+        const x = labelW + d * ppd;
+        g.push(`<line x1="${x}" y1="${hdrH}" x2="${x}" y2="${totalH}" stroke="${C.grid}" stroke-width="1"/>`);
+      }
+      if (step === 'day')   gc = addDays(gc, 1);
+      else if (step === 'week')  gc = addDays(gc, 7);
+      else gc = new Date(gc.getFullYear(), gc.getMonth() + 1, 1);
+    }
+  }
+
+  // Horizontal row separators
+  for (const r of rows) {
+    if (r.type !== 'section') {
+      g.push(`<line x1="0" y1="${r.y + r.h}" x2="${totalW}" y2="${r.y + r.h}" stroke="${C.grid}" stroke-width="0.5"/>`);
+    }
+  }
+
+  // Column separators
+  g.push(`<line x1="${labelW}" y1="0" x2="${labelW}" y2="${totalH}" stroke="${C.sep}" stroke-width="1"/>`);
+  g.push(`<line x1="${labelW + tlW}" y1="0" x2="${labelW + tlW}" y2="${totalH}" stroke="${C.sep}" stroke-width="1"/>`);
+
+  // Closed-day shading (only meaningful when ≥3px/day)
+  if (ppd >= 3 && (closedDates.size || closedWeekdays.size)) {
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      const iso = dateToISO(cur);
+      if (closedWeekdays.has(cur.getDay()) || closedDates.has(iso)) {
+        const d = daysBetween(wStart, cur);
+        const x = labelW + d * ppd;
+        g.push(`<rect x="${x}" y="${hdrH}" width="${ppd}" height="${totalH - hdrH}" fill="rgba(0,0,0,0.06)"/>`);
+      }
+      cur = addDays(cur, 1);
+    }
+  }
+
+  // Today line
+  const today = new Date();
+  if (today > wStart && today < wEnd) {
+    const tx = labelW + daysBetween(wStart, today) * ppd;
+    g.push(`<line x1="${tx}" y1="${hdrH}" x2="${tx}" y2="${totalH}" stroke="${C.today}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`);
+  }
+
+  // ── Rows ──────────────────────────────────────────────────────────────────
+
+  for (const r of rows) {
+    // Bar-Mitte aus dem Layout-Pass übernehmen (siehe barCenterY im rows-Layout).
+    const my = r.barCenterY;
+
+    if (r.type === 'section') {
+      const isColl = collapsedSections.has(r.name);
+      const caret = isColl ? '▶' : '▼';
+      g.push(`<g data-section-name="${esc(r.name)}" style="cursor:pointer">`);
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.sectionBg}"/>`);
+      g.push(`<text x="12" y="${my}" dy="0.35em" fill="${C.sectionFg}"`,
+             ` font-weight="700" font-size="${FS_SEC}">${caret}  ${esc(r.name)}</text>`);
+      g.push(`</g>`);
+      continue;
+    }
+
+    if (r.type === 'subsection') {
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.subsectionBg}"/>`);
+      g.push(`<rect x="0" y="${r.y}" width="3" height="${r.h}" fill="${C.subsectionAccent}"/>`);
+      g.push(`<text x="16" y="${my}" dy="0.35em" fill="${C.subsectionFg}"`,
+             ` font-weight="600" font-size="${FS}">${esc(r.name)}</text>`);
+      g.push(`<line x1="0" y1="${r.y + r.h}" x2="${totalW}" y2="${r.y + r.h}" stroke="${C.sep}" stroke-width="0.5"/>`);
+      continue;
+    }
+
+    // Label column (right-aligned)
+    const displayName = r.label || r.name;
+    g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
+           ` fill="${C.taskFgOut}" font-size="${FS}">${esc(displayName)}</text>`);
+
+    if (r.type === 'task') {
+      if (r.parseError) {
+        // Dummy-Task: keine Bar, aber sichtbarer Hinweis auf der Bar-Spur
+        g.push(`<rect x="${labelW}" y="${r.y}" width="${tlW}" height="${r.h}" fill="rgba(192,57,43,0.06)"/>`);
+        g.push(`<text x="${labelW + 6}" y="${my}" dy="0.35em" fill="#c0392b" font-size="${FS}" font-weight="600">⚠ Syntaxfehler in Zeile ${r.sourceLine}</text>`);
+        continue;
+      }
+      if (!r.start || !r.end) continue;
+      const sd = daysBetween(wStart, r.start);
+      const ed = daysBetween(wStart, r.end);
+      const sd2 = Math.max(0, sd);
+      const ed2 = Math.min(totalDays, ed);
+
+      if (sd2 < ed2) {
+        const bx = labelW + sd2 * ppd;
+        const bw = (ed2 - sd2) * ppd;
+        const by = my - BAR_H / 2;
+
+        const barFill = r.barColor || C.taskBar;
+        const barFg   = r.textColor || contrastColor(barFill);
+
+        const noteAttr = r.note ? ` data-note="${esc(r.note)}"` : '';
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}>`);
+        g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
+
+        // Progress overlay
+        if (r.pct > 0) {
+          const pw = bw * r.pct;
+          g.push(`<rect x="${bx}" y="${by}" width="${pw}" height="${BAR_H}" rx="${BAR_R}" fill="rgba(0,0,0,0.25)"/>`);
+          if (pw >= BAR_R && pw < bw - BAR_R)
+            g.push(`<rect x="${bx + pw - BAR_R}" y="${by}" width="${BAR_R}" height="${BAR_H}" fill="rgba(0,0,0,0.25)"/>`);
+        }
+
+        // Clip indicators
+        if (sd < 0)
+          g.push(`<polygon points="${bx},${by} ${bx+7},${by+BAR_H/2} ${bx},${by+BAR_H}" fill="#fff" opacity="0.4"/>`);
+        if (ed > totalDays)
+          g.push(`<polygon points="${bx+bw},${by} ${bx+bw-7},${by+BAR_H/2} ${bx+bw},${by+BAR_H}" fill="#fff" opacity="0.4"/>`);
+
+        // Label: inside if fits, else right of bar
+        const tw = approxTextW(displayName, FS);
+        const labelInside = tw + 10 < bw;
+        let labelEndX = bx + bw;
+        if (labelInside) {
+          g.push(`<text x="${bx + bw/2}" y="${my}" dy="0.35em" text-anchor="middle"`,
+                 ` fill="${barFg}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
+        } else {
+          const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
+          g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
+          labelEndX = lx + tw;
+        }
+
+        // Critical frame zuletzt — umschließt Bar + ggf. outer label
+        if (criticalNodes.has(r.name)) {
+          const fX = bx - 2;
+          const fW = Math.max(bw + 4, labelEndX + 2 - fX);
+          g.push(`<rect x="${fX}" y="${by - 2}" width="${fW}" height="${BAR_H + 4}" rx="${BAR_R + 1}" fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
+        }
+
+        g.push(`</g>`);
+      }
+
+    } else if (r.type === 'milestone') {
+      if (!r.date) continue;
+      const md = daysBetween(wStart, r.date);
+      const sz = 9;
+      const szDays = sz / ppd;
+      if (md >= -szDays && md <= totalDays + szDays) {
+        const mx = labelW + md * ppd;
+        const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
+        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}>`);
+        g.push(`<polygon points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
+               ` fill="${C.milestone}"/>`);
+        if (criticalNodes.has(r.name)) {
+          const oz = sz + 3;
+          g.push(`<polygon points="${mx},${my-oz} ${mx+oz},${my} ${mx},${my+oz} ${mx-oz},${my}"`,
+                 ` fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
+        }
+        g.push(`<text x="${mx + sz + 5}" y="${my}" dy="0.35em"`,
+               ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+        g.push(`</g>`);
+      }
+    }
+
+    // Notiz -- erste Zeile als Vorschau in der rechten Notiz-Spalte.
+    if (hasNotes && r.note) {
+      const maxNoteW = NOTE_W - 20;
+      const isMultiline = r.note.includes('\n');
+      const firstLine = isMultiline ? r.note.split('\n')[0] : r.note;
+      let noteText = firstLine;
+      while (noteText.length > 1 && approxTextW(noteText, FS) > maxNoteW) noteText = noteText.slice(0, -1);
+      const truncated = (noteText !== firstLine);
+      if (truncated) noteText = noteText.slice(0, -1) + '…';
+      else if (isMultiline) noteText = noteText + ' …';
+      g.push(`<text x="${labelW + tlW + 10}" y="${my}" dy="0.35em"`,
+             ` fill="${C.note}" font-size="${FS}">${esc(noteText)}</text>`);
+    }
+  }
+
+  // ── Dependency arrows ─────────────────────────────────────────────────────
+
+  if (showDeps) {
+    const rowMap = {};
+    for (const r of rows) {
+      if (r.type === 'task' || r.type === 'milestone') rowMap[r.name] = r;
+    }
+    const ARW = 6; // arrowhead size
+    for (const dep of items.filter(i => i.type === 'dep')) {
+      const rA = rowMap[dep.from], rB = rowMap[dep.to];
+      if (!rA || !rB) continue;
+      if (rA.type === 'task' && (!rA.start || !rA.end)) continue;
+      if (rB.type === 'task' && (!rB.start || !rB.end)) continue;
+
+      const startDateA = rA.type === 'milestone' ? rA.date : rA.start;
+      const endDateA   = rA.type === 'milestone' ? rA.date : rA.end;
+      const startDateB = rB.type === 'milestone' ? rB.date : rB.start;
+      if (!startDateA || !endDateA || !startDateB) continue;
+
+      const sdA = daysBetween(wStart, startDateA);
+      const edA = daysBetween(wStart, endDateA);
+      const sdB = daysBetween(wStart, startDateB);
+
+      // Skip if source bar is entirely outside window, or target starts after window
+      if (edA < 0 || sdA > totalDays || sdB > totalDays) continue;
+
+      // Start: above or below bar A depending on whether B is above or below A. Nutzt barCenterY,
+      // damit Pfeile auch bei interner Notiz (top/bottom) exakt an der Bar-Mitte ansetzen.
+      const topY_A = rA.barCenterY - BAR_H / 2 - 2;
+      const botY_A = rA.barCenterY + BAR_H / 2 + 2;
+      const midY_B = rB.barCenterY;
+      const startY = midY_B < rA.barCenterY ? topY_A : botY_A;
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      const midX_A = labelW + clamp((sdA + edA) / 2, 0, totalDays) * ppd;
+      const x2     = labelW + clamp(sdB, 0, totalDays) * ppd;
+
+      // Path: from top or bottom center of A → across to bar B midpoint
+      const path = `M ${midX_A} ${startY} V ${midY_B} H ${x2}`;
+      const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
+      const depColor = isCritEdge ? '#c0392b' : '#888';
+      const depWidth = isCritEdge ? '1.6' : '1.2';
+      g.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
+
+      // Arrowhead pointing right into bar B center
+      g.push(`<polygon points="${x2},${midY_B} ${x2 - ARW},${midY_B - ARW/2} ${x2 - ARW},${midY_B + ARW/2}" fill="${depColor}"/>`);
+    }
+  }
+
+  // ── Header (drawn last = on top) ──────────────────────────────────────────
+
+  g.push('<rect x="0" y="0" width="' + totalW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+
+  // Render each band in order (top to bottom)
+  const bandFontSize = { year: 13, quarter: 12, month: 12, kw: 11, day: 11, week: 11, projectday: 10 };
+  const bandFontWeight = { year: '700', quarter: '600', month: '600', kw: '600', day: '600', week: '600', projectday: '500' };
+  const bandMinW = { year: 28, quarter: 24, month: 14, kw: 18, day: 10, week: 18, projectday: 14 };
+
+  for (let bi = 0; bi < bands.length; bi++) {
+    const bName = bands[bi];
+    const by = BAND_H * bi;
+    const fs = bandFontSize[bName];
+    const fw = bandFontWeight[bName];
+    const minW = bandMinW[bName];
+    const ticks = getTicks(wStart, wEnd, bName, effectiveProjectStart, genericMode);
+    for (let i = 0; i < ticks.length; i++) {
+      const t = ticks[i];
+      const x = labelW + t.d0 * ppd, w = (t.d1 - t.d0) * ppd;
+      if (i % 2 === 1) g.push('<rect x="' + x + '" y="' + by + '" width="' + w + '" height="' + BAND_H + '" fill="' + C.headerBg2 + '"/>');
+      g.push('<line x1="' + x + '" y1="' + by + '" x2="' + x + '" y2="' + (by + BAND_H) + '" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>');
+      if (w > minW) {
+        // Year-Band wiederholt das Label alle ~500 px, damit beim Reinzoomen + horizontalem Scrollen die Jahreszahl immer im Sichtfenster bleibt.
+        const repeat = (bName === 'year') ? Math.max(1, Math.floor(w / 500)) : 1;
+        for (let k = 0; k < repeat; k++) {
+          const lx = Math.round(x + w * (k + 0.5) / repeat);
+          g.push('<text x="' + lx + '" y="' + (by + BAND_H/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="' + fw + '" font-size="' + fs + '">' + esc(t.label) + '</text>');
+        }
+      }
+    }
+  }
+
+  // DOW band — one cell per day, date + weekday
+  if (showDOW) {
+    const by = BAND_H * bands.length;
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      const d = daysBetween(wStart, cur);
+      const x = labelW + d * ppd;
+      const wd = cur.getDay();
+      const isWeekend = wd === 0 || wd === 6;
+      const bg = isWeekend ? 'rgba(0,0,0,0.20)' : d % 2 === 0 ? 'rgba(0,0,0,0.06)' : 'transparent';
+      g.push('<rect x="' + x + '" y="' + by + '" width="' + ppd + '" height="' + BAND_H + '" fill="' + bg + '"/>');
+      g.push('<line x1="' + x + '" y1="' + by + '" x2="' + x + '" y2="' + hdrH + '" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>');
+      const cy = by + BAND_H / 2;
+      g.push('<text x="' + Math.round(x + ppd/2) + '" y="' + cy + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-size="11" opacity="0.9">' + DOW[wd] + '</text>');
+      cur = addDays(cur, 1);
+    }
+  }
+
+  // Label column header
+  g.push('<rect x="0" y="0" width="' + labelW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+  if (parsed.title) {
+    g.push('<text x="' + (labelW/2) + '" y="' + (hdrH/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="700" font-size="13">' + esc(parsed.title) + '</text>');
+  }
+
+  // Notes column header
+  if (hasNotes) {
+    g.push('<rect x="' + (labelW+tlW) + '" y="0" width="' + noteW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+    g.push('<text x="' + (labelW+tlW+noteW/2) + '" y="' + (hdrH/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="700" font-size="11">Notizen</text>');
+  }
+
+  // Header bottom border
+  g.push('<line x1="0" y1="' + hdrH + '" x2="' + totalW + '" y2="' + hdrH + '" stroke="' + C.sep + '" stroke-width="1"/>');
+
+  g.push('</svg>');
+  return g.join('');
+}
+
+// ─── App State & Logic ────────────────────────────────────────────────────────
+
+const state = {
+  parsed: null, wStart: null, wEnd: null, ppd: null,
+  cp: { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false },
+  fitMode: false,
+  collapsedSections: new Set(),
+  windowMode: 'auto',          // 'auto' | 'manual'
+};
+
+function autoWindow(items) {
+  let lo = null, hi = null;
+  for (const it of items) {
+    const dates = it.type === 'milestone' ? [it.date] : [it.start, it.end];
+    for (const d of dates) {
+      if (!d) continue;
+      if (!lo || d < lo) lo = d;
+      if (!hi || d > hi) hi = d;
+    }
+  }
+  if (!lo) { lo = new Date(); hi = addDays(lo, 90); }
+  return { start: addDays(lo, -7), end: addDays(hi, 14) };
+}
+
+function autoZoom(wStart, wEnd, items) {
+  const w = document.getElementById('svg-wrap').clientWidth || 900;
+  const days = daysBetween(wStart, wEnd);
+  const labelW = effectiveLabelW(items || []);
+  return Math.min(200, Math.max(0.5, (w - labelW - 40) / days));
+}
+
+function isFixedZoom() {
+  const cb = document.getElementById('chk-fixed-zoom');
+  return cb && cb.checked;
+}
+
+function applyFit() {
+  if (!state.parsed || !state.wStart || !state.wEnd) return;
+  if (isFixedZoom()) { state.ppd = BAR_H; render(); return; }
+  const days = daysBetween(state.wStart, state.wEnd);
+  const showNotes = document.getElementById('chk-notes').checked;
+  const noteW = (showNotes && state.parsed.rawItems.some(i => i.note)) ? NOTE_W : 0;
+  const labelW = effectiveLabelW(state.parsed.rawItems);
+  const wrap = document.getElementById('svg-wrap');
+  const avail = (wrap.clientWidth || 900) - labelW - noteW - 16; // 16px Padding-Reserve
+  const ppd = days > 0 ? avail / days : 200;
+  state.ppd = Math.min(200, Math.max(0.2, ppd));
+  render();
+}
+
+function fitToPage() {
+  if (!state.parsed) return;
+  state.windowMode = 'auto';
+  const { start, end } = autoWindow(state.parsed.rawItems);
+  state.wStart = start;
+  state.wEnd = end;
+  setDateInputs(start, end);
+  state.fitMode = true;
+  applyFit();
+}
+
+function setDateInputs(s, e) {
+  document.getElementById('date-from').value = dateToISO(s);
+  document.getElementById('date-to').value   = dateToISO(e);
+}
+
+function render() {
+  if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
+  let svg;
+  try {
+    const showMS    = document.getElementById('chk-milestones').checked;
+    const showNotes = document.getElementById('chk-notes').checked;
+    const showDeps  = document.getElementById('chk-deps').checked;
+    const showCrit  = document.getElementById('chk-critical').checked;
+    const parsedView = showMS ? state.parsed : { ...state.parsed, rawItems: state.parsed.rawItems.filter(it => it.type !== 'milestone') };
+    const cn = showCrit ? state.cp.criticalNodes : new Set();
+    const ce = showCrit ? state.cp.criticalEdges : new Set();
+    svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
+                   state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
+                   state.collapsedSections, showNotes);
+  } catch (e) {
+    // Render-Fehler: bestehendes SVG NICHT antasten, nur Warnung anzeigen.
+    showWarnings([], 'Render-Fehler: ' + (e.message || e));
+    return;
+  }
+  const svgWrap = document.getElementById('svg-wrap');
+  svgWrap.innerHTML = svg;
+
+  // Sticky overlays: header row (top) + label column (left)
+  const chartSvg = svgWrap.querySelector('svg');
+  if (chartSvg) {
+    const totalH = +chartSvg.getAttribute('height');
+    const totalW = +chartSvg.getAttribute('width');
+    const hdrH   = +chartSvg.getAttribute('data-hdrh');
+    const labelW = +chartSvg.getAttribute('data-labelw') || 200;
+
+    // Sticky header (top) -- scrolls horizontally, stays at top
+    const hdrClone = chartSvg.cloneNode(true);
+    hdrClone.setAttribute('viewBox', `0 0 ${totalW} ${hdrH}`);
+    hdrClone.setAttribute('width', String(totalW));
+    hdrClone.setAttribute('height', String(hdrH));
+    hdrClone.setAttribute('overflow', 'hidden');
+    hdrClone.style.display = 'block';
+    const stickyTop = document.createElement('div');
+    stickyTop.style.cssText = `position:sticky;top:0;width:${totalW}px;height:${hdrH}px;` +
+      `pointer-events:none;z-index:6;overflow:hidden;`;
+    stickyTop.appendChild(hdrClone);
+    svgWrap.insertBefore(stickyTop, chartSvg);
+    chartSvg.style.marginTop = '-' + hdrH + 'px';
+
+    // Sticky label column (left) -- scrolls vertically, stays at left
+    const lblClone = chartSvg.cloneNode(true);
+    lblClone.setAttribute('viewBox', `0 0 ${labelW} ${totalH}`);
+    lblClone.setAttribute('width', String(labelW));
+    lblClone.setAttribute('height', String(totalH));
+    lblClone.setAttribute('overflow', 'hidden');
+    lblClone.style.display = 'block';
+    const stickyLeft = document.createElement('div');
+    stickyLeft.style.cssText = `position:sticky;left:0;width:${labelW}px;height:${totalH}px;` +
+      `margin-top:-${totalH}px;pointer-events:none;z-index:5;`;
+    stickyLeft.appendChild(lblClone);
+    svgWrap.appendChild(stickyLeft);
+  }
+
+  const days = daysBetween(state.wStart, state.wEnd);
+  const bandLabel = ({year:"Jahr",quarter:"Quartal",month:"Monat",kw:"KW",week:"Woche",day:"Tag",projectday:"Projekttag"})[getBands(state.ppd, days, state.parsed?.projectStart?.getFullYear()===1900).bands.at(-1)];
+  document.getElementById('zoom-label').textContent = isFixedZoom()
+    ? `100% · ${state.ppd.toFixed(0)} px/Tag · ${bandLabel}`
+    : `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
+}
+
+function showWarnings(warnings, fatalMsg) {
+  const b = document.getElementById('warn-banner');
+  const hasAny = (warnings && warnings.length > 0) || !!fatalMsg;
+  b.replaceChildren();
+  if (!hasAny) { b.style.display = 'none'; return; }
+  if (fatalMsg) {
+    const d = document.createElement('div');
+    d.className = 'warn-fatal';
+    d.textContent = fatalMsg;
+    b.appendChild(d);
+  }
+  const MAX = 3;
+  const shown = (warnings || []).slice(0, MAX);
+  for (const w of shown) {
+    const rawCut = w.raw && w.raw.length > 50 ? w.raw.slice(0, 50) + '…' : (w.raw || '');
+    const prefix = w.lineNum > 0 ? `Zeile ${w.lineNum}: ` : '';
+    const d = document.createElement('div');
+    d.className = 'warn-row';
+    d.textContent = prefix + w.reason + (rawCut ? ' — ' + rawCut : '');
+    b.appendChild(d);
+  }
+  const extra = (warnings || []).length - MAX;
+  if (extra > 0) {
+    const d = document.createElement('div');
+    d.className = 'warn-more';
+    d.textContent = `+ ${extra} weitere Warnung${extra === 1 ? '' : 'en'}`;
+    b.appendChild(d);
+  }
+  b.style.display = 'block';
+}
+
+function renderSourcePreview(text, warnings) {
+  const wrap = document.getElementById('source-preview');
+  const pre = document.getElementById('source-preview-pre');
+  pre.replaceChildren();
+  if (!warnings || warnings.length === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+  const errorLines = new Set(warnings.map(w => w.lineNum).filter(n => n > 0));
+  const lines = text.split('\n');
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1;
+    const div = document.createElement('div');
+    div.className = errorLines.has(n) ? 'src-line src-line-error' : 'src-line';
+    div.dataset.line = String(n);
+    const ln = document.createElement('span');
+    ln.className = 'src-ln';
+    ln.textContent = String(n);
+    const txt = document.createElement('span');
+    txt.className = 'src-txt';
+    txt.textContent = lines[i] || ' ';
+    div.appendChild(ln);
+    div.appendChild(txt);
+    frag.appendChild(div);
+  }
+  pre.appendChild(frag);
+  wrap.style.display = 'block';
+  const firstError = pre.querySelector('.src-line-error');
+  if (firstError) firstError.scrollIntoView({ block: 'center' });
+}
+
+function processInput(text) {
+  if (!text.trim()) {
+    const svgWrap = document.getElementById('svg-wrap');
+    svgWrap.replaceChildren();
+    showWarnings([], null);
+    renderSourcePreview('', []);
+    state.parsed = null;
+    state.cp = { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false };
+    return;
+  }
+  // Komplette Pipeline in lokalen Variablen — wird erst nach Erfolg atomar in den State übernommen.
+  // Bei jedem Fehler in dieser Kette bleibt der zuletzt erfolgreiche Stand (state.parsed, state.cp,
+  // wStart/wEnd/ppd) und damit das bestehende SVG vollständig unangetastet.
+  let nextParsed, nextCp, nextStart, nextEnd, nextPpd, warnings;
+  try {
+    nextParsed = parsePlantUML(text);
+    resolveItems(nextParsed.rawItems, nextParsed.closedDates, nextParsed.closedWeekdays);
+    nextCp = computeCriticalPath(nextParsed.rawItems);
+    warnings = [...(nextParsed.parseWarnings || [])];
+    if (nextCp.cycleDetected) {
+      const cn = nextCp.cycleDetails || [];
+      const namesList = cn.map(d => `[${d.name}]`).join(', ');
+      const lineNums = cn.map(d => d.sourceLine).filter(n => n > 0);
+      const firstLine = lineNums.length ? Math.min(...lineNums) : 0;
+      warnings.push({
+        lineNum: firstLine, raw: '',
+        reason: 'Zyklus im Abhängigkeitsgraph (kritischer Pfad nicht bestimmbar): ' + namesList,
+      });
+    }
+    for (const it of nextParsed.rawItems) {
+      if (it.parseError) {
+        warnings.push({
+          lineNum: it.sourceLine || 0, raw: '',
+          reason: `Syntaxfehler in Task '[${it.name}]'`,
+        });
+      }
+    }
+    if (nextParsed.rawItems._unresolvedDetails?.length) {
+      for (const d of nextParsed.rawItems._unresolvedDetails) {
+        warnings.push({
+          lineNum: d.sourceLine || 0, raw: '',
+          reason: `Abhängigkeit '[${d.afterTask}]' für '[${d.name}]' nicht auflösbar`,
+        });
+      }
+    }
+    const win = autoWindow(nextParsed.rawItems);
+    nextStart = win.start;
+    nextEnd = win.end;
+    nextPpd = autoZoom(nextStart, nextEnd, nextParsed.rawItems);
+    // NaN-Date / Invalid Date kaskadiert sonst stumm zu kaputten SVG-Koordinaten — hier explizit abfangen.
+    if (!(nextStart instanceof Date) || isNaN(nextStart.getTime()) ||
+        !(nextEnd   instanceof Date) || isNaN(nextEnd.getTime())) {
+      throw new Error('Ungültige Datums-Werte (Invalid Date) in der Quelle');
+    }
+    if (!Number.isFinite(nextPpd) || nextPpd <= 0) {
+      throw new Error('Ungültiger Zoom-Faktor (ppd) berechnet');
+    }
+  } catch (e) {
+    // Pipeline-Fehler: bestehendes SVG und State bleiben unangetastet.
+    showWarnings([], 'Schwerer Verarbeitungs-Fehler: ' + (e.message || e));
+    renderSourcePreview(text, []);
+    return;
+  }
+  // Atomar in den State übernehmen — entweder alle Felder gemeinsam oder gar nicht.
+  state.parsed = nextParsed;
+  state.cp = nextCp;
+  // Datumsfenster nur im 'auto'-Modus überschreiben — manueller Zoom/Datums-Pick bleibt erhalten.
+  if (state.windowMode === 'auto') {
+    state.wStart = nextStart;
+    state.wEnd = nextEnd;
+    state.ppd = isFixedZoom() ? BAR_H : (state.fitMode ? state.ppd : nextPpd);
+  } else if (isFixedZoom()) {
+    state.ppd = BAR_H;
+  }
+  showWarnings(warnings, null);
+  renderSourcePreview(text, warnings);
+  setDateInputs(state.wStart, state.wEnd);
+  // render() / applyFit() sind in sich abgesichert — Render-Fehler lassen das alte SVG stehen.
+  if (state.fitMode) applyFit();
+  else render();
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+function dl(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function visibleSVG() {
+  const wrap = document.getElementById('svg-wrap');
+  // querySelector finds the first SVG which may be the sticky header clone; get the direct child SVG
+  const el = wrap.querySelector(':scope > svg');
+  if (!el) return null;
+  const totalW = +el.getAttribute('width');
+  const vh = +el.getAttribute('height');
+  // Always export full diagram from x=0; 1px padding so strokes at edges aren't half-clipped
+  const PAD = 1;
+  const clone = el.cloneNode(true);
+  clone.setAttribute('viewBox', `${-PAD} ${-PAD} ${totalW + 2 * PAD} ${vh + 2 * PAD}`);
+  clone.setAttribute('width', totalW + 2 * PAD);
+  clone.setAttribute('height', vh + 2 * PAD);
+  clone.style.marginTop = '';
+  return clone;
+}
+
+function exportSVG() {
+  const el = visibleSVG();
+  if (!el) return;
+  const str = new XMLSerializer().serializeToString(el);
+  dl(new Blob([str], { type: 'image/svg+xml;charset=utf-8' }), 'gantt.svg');
+}
+
+function exportPNG() {
+  const el = visibleSVG();
+  if (!el) return;
+  const W = +el.getAttribute('width'), H = +el.getAttribute('height'), S = 4;
+  const str = new XMLSerializer().serializeToString(el);
+  const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const c = Object.assign(document.createElement('canvas'), { width: W*S, height: H*S });
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W*S, H*S);
+    ctx.scale(S, S); ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    c.toBlob(pb => dl(pb, 'gantt.png'), 'image/png');
+  };
+  img.onerror = () => showWarnings([], 'PNG-Export fehlgeschlagen: SVG enthält möglicherweise externe Ressourcen.');
+  img.src = url;
+}
+
+let _fontCSS = null;
+
+async function loadEmbeddedFont() {
+  if (_fontCSS !== null) return _fontCSS;
+  const cached = await idbGet('fontCSS_v2');
+  if (cached) { _fontCSS = cached; return _fontCSS; }
+  try {
+    const css = await fetch('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap').then(r => r.text());
+    const urls = [...css.matchAll(/url\(([^)]+\.woff2[^)]*)\)/g)].map(m => m[1].replace(/['"]/g, ''));
+    let result = css;
+    const replacements = await Promise.all(urls.map(async url => {
+      const buf = await fetch(url).then(r => r.arrayBuffer());
+      const bytes = new Uint8Array(buf);
+      let raw = '';
+      for (let i = 0; i < bytes.length; i += 8192) raw += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      const b64 = btoa(raw);
+      return { url, b64 };
+    }));
+    for (const { url, b64 } of replacements) {
+      result = result.replace(url, `data:font/woff2;base64,${b64}`);
+    }
+    _fontCSS = result;
+    await idbSet('fontCSS_v2', result);
+  } catch(e) {
+    _fontCSS = '';
+  }
+  return _fontCSS;
+}
+
+async function exportPDF() {
+  const wrap = document.getElementById('svg-wrap');
+  const el = wrap.querySelector(':scope > svg');
+  if (!el) return;
+  const totalW = +el.getAttribute('width');
+  const totalH = +el.getAttribute('height');
+  const clone = el.cloneNode(true);
+  clone.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
+  clone.setAttribute('width', '287mm');
+  clone.setAttribute('height', '200mm');
+  clone.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  clone.style.marginTop = '';
+  const fontCSS = await loadEmbeddedFont();
+  const title = (state.parsed && state.parsed.title) || '';
+  const svgStr = new XMLSerializer().serializeToString(clone);
+  const win = window.open('', '_blank');
+  if (!win) { showWarnings([], 'Popup wurde vom Browser blockiert. Bitte Popups für diese Seite erlauben.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title || 'Gantt'}</title><style>@page{size:A4 landscape;margin:5mm}*{margin:0;padding:0}body{width:287mm;height:200mm;overflow:hidden}${fontCSS}</style></head><body>${svgStr}<script>window.print()<\/script></body></html>`);
+  win.document.close();
+}
+
+// ─── IDB helpers ──────────────────────────────────────────────────────────────
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('gantt-renderer', 3);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      // history-Store war ein verworfener Versuch (F4) — aufräumen, falls aus v2 vorhanden.
+      if (db.objectStoreNames.contains('history')) db.deleteObjectStore('history');
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction('kv').objectStore('kv').get(key);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction('kv','readwrite').objectStore('kv').put(val, key);
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+// ─── File Loader ──────────────────────────────────────────────────────────────
+
+let dirHandle = null;
+let currentFileHandle = null;
+let lastModified = null;
+let autoReloadTimer = null;
+
+function startAutoReload() {
+  if (autoReloadTimer) return;
+  autoReloadTimer = setInterval(async () => {
+    if (!currentFileHandle) return;
+    try {
+      const file = await currentFileHandle.getFile();
+      if (lastModified !== null && file.lastModified !== lastModified) {
+        lastModified = file.lastModified;
+        processInput(await file.text());
+      }
+    } catch(e) { console.warn('Auto-Reload Fehler:', e); }
+  }, 1000);
+}
+
+function stopAutoReload() {
+  clearInterval(autoReloadTimer);
+  autoReloadTimer = null;
+}
+
+async function refreshFileList() {
+  const sel = document.getElementById('file-select');
+  sel.innerHTML = '<option value="">— Datei wählen —</option>';
+  const names = [];
+  for await (const [name, handle] of dirHandle.entries())
+    if (handle.kind === 'file' && name.endsWith('.puml')) names.push(name);
+  names.sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  document.getElementById('file-hint').textContent =
+    names.length ? `${names.length} Datei${names.length > 1 ? 'en' : ''} gefunden`
+                 : 'Keine .puml-Dateien gefunden';
+}
+
+async function loadCurrentFile() {
+  if (!currentFileHandle) return;
+  try {
+    const file = await currentFileHandle.getFile();
+    lastModified = file.lastModified;
+    processInput(await file.text());
+  } catch(e) { showWarnings([], 'Datei konnte nicht gelesen werden: ' + e.message); }
+}
+
+async function restoreDir() {
+  try {
+    const handle = await idbGet('dirHandle');
+    if (!handle) return;
+    if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return;
+    dirHandle = handle;
+    await refreshFileList();
+    const last = localStorage.getItem('gantt-lastFile');
+    const sel = document.getElementById('file-select');
+    if (last && [...sel.options].some(o => o.value === last)) {
+      sel.value = last;
+      currentFileHandle = await dirHandle.getFileHandle(last);
+      await loadCurrentFile();
+    }
+  } catch(e) { /* kein gespeicherter Ordner */ }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  restoreDir();
+  startAutoReload();
+
+  document.getElementById('btn-pick-dir').addEventListener('click', async () => {
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+      await idbSet('dirHandle', dirHandle);
+      await refreshFileList();
+    } catch(e) { /* abgebrochen */ }
+  });
+
+  document.getElementById('file-select').addEventListener('change', async e => {
+    const name = e.target.value;
+    if (!name || !dirHandle) return;
+    localStorage.setItem('gantt-lastFile', name);
+    currentFileHandle = await dirHandle.getFileHandle(name);
+    // Neue Datei → auto-Modus, sonst würde das alte manuelle Fenster auf das neue Projekt angewandt.
+    state.windowMode = 'auto';
+    await loadCurrentFile();
+  });
+
+  document.getElementById('btn-reload').addEventListener('click', loadCurrentFile);
+
+  document.getElementById('chk-autoreload').addEventListener('change', e => {
+    e.target.checked ? startAutoReload() : stopAutoReload();
+  });
+
+  document.getElementById('chk-milestones').addEventListener('change', () => render());
+  document.getElementById('chk-notes').addEventListener('change', () => render());
+  document.getElementById('chk-deps').addEventListener('change', () => render());
+  document.getElementById('chk-critical').addEventListener('change', () => render());
+  document.getElementById('chk-fixed-zoom').addEventListener('change', e => {
+    if (e.target.checked) { state.ppd = BAR_H; state.fitMode = false; }
+    render();
+  });
+
+  document.getElementById('btn-collapse-all').addEventListener('click', () => {
+    if (!state.parsed) return;
+    for (const it of state.parsed.rawItems) {
+      if (it.type === 'section') state.collapsedSections.add(it.name);
+    }
+    render();
+  });
+  document.getElementById('btn-expand-all').addEventListener('click', () => {
+    state.collapsedSections.clear();
+    render();
+  });
+
+  document.getElementById('svg-wrap').addEventListener('click', e => {
+    const sec = e.target.closest('[data-section-name]');
+    if (!sec) return;
+    const name = sec.getAttribute('data-section-name');
+    if (state.collapsedSections.has(name)) state.collapsedSections.delete(name);
+    else state.collapsedSections.add(name);
+    render();
+  });
+
+  document.getElementById('date-from').addEventListener('change', e => {
+    if (e.target.value) { state.wStart = parseDate(e.target.value); state.windowMode = 'manual'; render(); }
+  });
+  document.getElementById('date-to').addEventListener('change', e => {
+    if (e.target.value) { state.wEnd = parseDate(e.target.value); state.windowMode = 'manual'; render(); }
+  });
+
+  // Helper: jede User-initiierte Zoom-Aktion löst den 100%-Toggle aus dem Fixed-Modus.
+  function releaseFixedZoom() {
+    const cb = document.getElementById('chk-fixed-zoom');
+    if (cb && cb.checked) cb.checked = false;
+  }
+  document.getElementById('btn-zoom-in').addEventListener('click', () => {
+    if (!state.ppd) return;
+    releaseFixedZoom();
+    state.fitMode = false; state.ppd = Math.min(200, state.ppd * 1.35); render();
+  });
+  document.getElementById('btn-zoom-out').addEventListener('click', () => {
+    if (!state.ppd) return;
+    releaseFixedZoom();
+    state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); render();
+  });
+  document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+    if (!state.wStart || !state.wEnd) return;
+    releaseFixedZoom();
+    state.fitMode = false; state.windowMode = 'auto';
+    state.ppd = autoZoom(state.wStart, state.wEnd, state.parsed?.rawItems || []);
+    render();
+  });
+  document.getElementById('btn-fit-page').addEventListener('click', () => { releaseFixedZoom(); fitToPage(); });
+
+  document.getElementById('btn-export-svg').addEventListener('click', exportSVG);
+  document.getElementById('btn-export-png').addEventListener('click', exportPNG);
+  document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
+
+  // Panel collapse
+  const panelLeft = document.getElementById('panel-left');
+  const btnCollapse = document.getElementById('btn-collapse');
+  let collapsed = false, savedW = panelLeft.offsetWidth;
+
+  btnCollapse.addEventListener('click', e => {
+    e.stopPropagation();
+    collapsed = !collapsed;
+    if (collapsed) {
+      savedW = panelLeft.offsetWidth;
+      panelLeft.style.width   = '0';
+      panelLeft.style.minWidth = '0';
+      panelLeft.style.padding  = '0';
+      panelLeft.style.overflow = 'hidden';
+    } else {
+      panelLeft.style.width   = savedW + 'px';
+      panelLeft.style.minWidth = '';
+      panelLeft.style.padding  = '';
+      panelLeft.style.overflow = '';
+    }
+    btnCollapse.textContent = collapsed ? '▶' : '◀';
+    btnCollapse.title = collapsed ? 'Panel ausklappen' : 'Panel einklappen';
+  });
+
+  // Nach Abschluss der width-Transition des linken Panels neu fitten,
+  // damit `applyFit` die finale clientWidth des SVG-Wraps liest, nicht die alte.
+  panelLeft.addEventListener('transitionend', e => {
+    if (e.propertyName === 'width' && state.fitMode) applyFit();
+  });
+
+  // Splitter drag
+  const splitter = document.getElementById('splitter');
+  let dragging = false, startX = 0, startW = 0;
+
+  splitter.addEventListener('mousedown', e => {
+    if (e.target === btnCollapse) return;
+    dragging = true; startX = e.clientX; startW = panelLeft.offsetWidth;
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.max(160, Math.min(window.innerWidth * 0.6, startW + e.clientX - startX));
+    panelLeft.style.width = w + 'px';
+    if (state.fitMode) applyFit();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+
+  // ── Tooltip ──────────────────────────────────────────────────────────────────
+  const tip = document.getElementById('gantt-tooltip');
+
+  function fmtTipDate(iso) {
+    const d = parseDate(iso);
+    return `${DOW_LONG[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  const svgWrap = document.getElementById('svg-wrap');
+  svgWrap.addEventListener('mousemove', e => {
+    const noteEl = e.target.closest('[data-note]');
+    if (noteEl && !noteEl.closest('[data-name]')) {
+      const full = noteEl.getAttribute('data-note');
+      tip.replaceChildren();
+      const lbl = document.createElement('b');
+      lbl.style.cssText = 'font-size:11px;color:#8ab4cc';
+      lbl.textContent = 'Notiz';
+      tip.appendChild(lbl);
+      const ln = (full || '').split('\n');
+      for (let i = 0; i < ln.length; i++) {
+        if (i > 0) tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(ln[i]));
+      }
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let lx = e.clientX + 16, ly = e.clientY + 12;
+      if (lx + tw > window.innerWidth  - 8) lx = e.clientX - tw - 8;
+      if (ly + th > window.innerHeight - 8) ly = e.clientY - th - 8;
+      tip.style.left = lx + 'px'; tip.style.top = ly + 'px';
+      return;
+    }
+    const el = e.target.closest('[data-name]');
+    if (!el) { tip.style.display = 'none'; return; }
+    const name = el.getAttribute('data-name');
+    const sec  = el.getAttribute('data-section');
+    tip.replaceChildren();
+    const b = document.createElement('b');
+    b.textContent = name;
+    tip.appendChild(b);
+    if (sec) {
+      const sp = document.createElement('span');
+      sp.style.cssText = 'display:block;font-size:11px;color:#8ab4cc;margin-bottom:5px';
+      sp.textContent = sec;
+      tip.appendChild(sp);
+    }
+    if (el.dataset.ms) {
+      tip.appendChild(document.createTextNode(`Datum: ${fmtTipDate(el.dataset.ms)}`));
+    } else {
+      const days = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
+      const weeks = Math.ceil(days / 7);
+      tip.appendChild(document.createTextNode(`Start: ${fmtTipDate(el.dataset.start)}`));
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Dauer: ${days} Tage (${weeks} ${weeks === 1 ? 'Woche' : 'Wochen'})`));
+    }
+    // Notiz am Task/Milestone (data-note auf dem <g>) anhängen — funktioniert auch bei ausgeblendetem Notizen-Toggle.
+    const note = el.getAttribute('data-note');
+    if (note) {
+      tip.appendChild(document.createElement('br'));
+      const noteLbl = document.createElement('span');
+      noteLbl.style.cssText = 'display:block;font-size:11px;color:#8ab4cc;margin-top:5px';
+      noteLbl.textContent = 'Notiz';
+      tip.appendChild(noteLbl);
+      const ln = note.split('\n');
+      for (let i = 0; i < ln.length; i++) {
+        if (i > 0) tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(ln[i]));
+      }
+    }
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let lx = e.clientX + 16, ly = e.clientY + 12;
+    if (lx + tw > window.innerWidth  - 8) lx = e.clientX - tw - 8;
+    if (ly + th > window.innerHeight - 8) ly = e.clientY - th - 8;
+    tip.style.left = lx + 'px';
+    tip.style.top  = ly + 'px';
+  });
+  svgWrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+
+  window.addEventListener('resize', () => {
+    if (state.fitMode) applyFit();
+  });
+
+  // Ctrl+Mausrad = Zoom, plain Mausrad = vertikaler Browser-Scroll
+  svgWrap.addEventListener('wheel', e => {
+    if (!state.ppd || !e.ctrlKey) return;
+    e.preventDefault();
+    releaseFixedZoom();
+    state.fitMode = false;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newPpd = Math.max(0.2, Math.min(200, state.ppd * factor));
+    // Tag-Position unter dem Cursor vor dem Zoom
+    const cursorDay = (e.offsetX + svgWrap.scrollLeft) / state.ppd;
+    state.ppd = newPpd;
+    render();
+    // Scroll so anpassen, dass derselbe Tag unter dem Cursor bleibt
+    svgWrap.scrollLeft = cursorDay * newPpd - e.offsetX;
+  }, { passive: false });
+});
+</script>
+</body>
+</html>

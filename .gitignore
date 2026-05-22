@@ -1,0 +1,7 @@
+# Allowlist: alle Dateien ignorieren außer den explizit erlaubten.
+*
+!plantuml-renderer.html
+!LICENSE
+!VERSION
+!README.md
+!.gitignore
