@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.6** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.7** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -82,7 +82,7 @@ Advantages:
 1. Open the app in a browser.
 2. Click **"Choose folder"** → select a directory containing `.puml` files.
 3. Pick a file from the dropdown.
-4. Edit the `.puml` file in your editor of choice (Pulsar, VSCode, Vim, …) and save → the app re-renders within 1 s.
+4. Edit the `.puml` file in your editor of choice (VSCodium, VSCode, Vim, …) and save → the app re-renders within 1 s.
 
 ---
 
@@ -173,7 +173,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 The renderer has **no** built-in snapshot/history feature. Version control happens externally:
 
 1. Turn the `.puml` folder into a Git repo with `git init`.
-2. Work in an editor with a Git panel — **Pulsar** (Atom fork, `language-plantuml` package + built-in Git tab), VSCode, or any JetBrains IDE works fine.
+2. Work in an editor with a Git panel — **VSCodium** (FOSS build of VSCode, with a PlantUML extension + built-in Source Control tab), VSCode, or any JetBrains IDE works fine.
 3. Commit when you reach a milestone; `git push` for backup/sync.
 4. Inspect an older version: `git checkout <commit> -- file.puml` → the renderer polls and re-renders automatically.
 
