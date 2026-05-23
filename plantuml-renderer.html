@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.10</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.11</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -590,17 +590,23 @@ function computeCriticalPath(rawItems) {
 
   const preds = {}, succs = {};
   for (const n of names) { preds[n] = new Set(); succs[n] = new Set(); }
-  const addEdge = (from, to) => {
+  // Hard edges: stammen aus afterTask, d. h. der Nachfolger verschiebt sich
+  // tatsächlich, wenn der Vorgänger sich verzögert (echte Date-Constraint).
+  // Soft edges: nur dep-Pfeile oder implizit-temporale Kanten — visualisieren
+  // eine logische Reihenfolge, halten aber kein Datum fest.
+  const hardEdges = new Set();
+  const addEdge = (from, to, hard = false) => {
     if (!nodes[from] || !nodes[to] || from === to) return;
     preds[to].add(from);
     succs[from].add(to);
+    if (hard) hardEdges.add(from + '→' + to);
   };
   for (const it of rawItems) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
-      addEdge(it.afterTask, it.name);
+      addEdge(it.afterTask, it.name, true);
     }
     if (it.type === 'dep') {
-      addEdge(it.from, it.to);
+      addEdge(it.from, it.to, false);
     }
   }
   // Snapshot der Knoten, die durch explizite Kanten (afterTask + dep) verbunden sind.
@@ -658,22 +664,42 @@ function computeCriticalPath(rawItems) {
 
   let projectEnd = EF[names[0]];
   for (const n of names) if (EF[n] > projectEnd) projectEnd = EF[n];
+  // Lag pro Edge in Kalendertagen. Nur hard edges (afterTask) verschieben
+  // den Nachfolger tatsächlich; soft edges (dep-Pfeile, implizit-temporal)
+  // gelten als FS mit lag 0 — der Nachfolger reagiert nicht auf eine
+  // Verzögerung des Vorgängers, also bekommt der Vorgänger seinen vollen
+  // Puffer bis LS[s].
+  const edgeLag = {};
+  for (const from of names) {
+    for (const to of succs[from]) {
+      const key = from + '→' + to;
+      if (hardEdges.has(key)) {
+        // Hard edge: realer Gap im Plan. Bei SS-Beziehungen (afterWhat='start')
+        // kann der Gap rechnerisch negativ werden → auf 0 klemmen, weil ein
+        // negativer Lag in der Backward-Pass-Formel sinnfrei ist.
+        edgeLag[key] = Math.max(0, ES[to] - EF[from]);
+      } else {
+        edgeLag[key] = 0;
+      }
+    }
+  }
   const LF = {}, LS = {};
   for (let i = topo.length - 1; i >= 0; i--) {
     const n = topo[i];
     if (succs[n].size === 0) {
       LF[n] = projectEnd;
     } else {
-      // Lag-aware: LF[n] = EF[n] + min(slack[s]). Naive `LF = min(LS[s])`
-      // würde Lücken zwischen Tasks (`+ N days`-Offset, `starts N days after …`)
-      // wie freien Puffer rechnen — dann erbt jeder Vorgänger fälschlich Slack
-      // und nur das Pfad-Ende erscheint kritisch.
-      let minSlack = Infinity;
+      // LF[n] = min(LS[s] − lag(n,s)). Edge-Typ entscheidet:
+      //   hard (afterTask) → lag = realer Plan-Gap (Vorgänger zieht Nachfolger mit)
+      //   soft (dep, implicit) → lag = 0 (Nachfolger hat eigene Anker, Vorgänger
+      //   hat freien Puffer bis LS[s])
+      let minVal = Infinity;
       for (const s of succs[n]) {
-        const slackS = LS[s] - ES[s];
-        if (slackS < minSlack) minSlack = slackS;
+        const lag = edgeLag[n + '→' + s] || 0;
+        const val = LS[s] - lag;
+        if (val < minVal) minVal = val;
       }
-      LF[n] = EF[n] + minSlack;
+      LF[n] = minVal;
     }
     LS[n] = LF[n] - dur[n];
   }
