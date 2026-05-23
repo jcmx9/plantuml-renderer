@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.22** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.23** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -14,11 +14,11 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 - **Fully client-side:** the supported PlantUML Gantt subset is parsed and rendered to SVG directly in the browser.
 - **Live-reload:** polls the selected `.puml` file every 1 s and re-renders on change.
 - **Robust live parsing:** per-line tolerant parser with heuristics (bracket imbalance, suspicious dates, keyword without pattern). Dummy tasks on syntax errors prevent dependent tasks from jumping back to the project start. The last successfully rendered state stays visible when errors occur.
-- **Structured warning banner** with line numbers per issue.
+- **Structured warning banner** with line numbers per issue. Plus lint warnings: **isolated items** (no predecessor, no successor, no dependency) and **plan conflicts** (predecessor ends after successor starts, for FS relationships).
 - **Source preview** panel highlights faulty lines in red, opens automatically on problems.
 
 ### Visualisation
-- **Critical path** (CPM, slack = 0) toggle: red outline around critical bars/milestones, red dependency arrows along the chain. Custom bar colours stay untouched (the outline frame is drawn outside the bar).
+- **Critical path** (CPM, slack = 0) toggle: red outline around critical bars/milestones, red dependency arrows along the chain. Custom bar colours stay untouched (the outline frame is drawn outside the bar). The backward pass is **lag-aware** (`+ N days` offsets propagate slack correctly) and distinguishes **hard edges** (`afterTask`, predecessor's shift propagates) from **soft edges** (`->` arrows, logical ordering only). SS-relationships (`at [Y]'s start + N`) are treated correctly as parallel.
 - **Adaptive time scale:** Year / Quarter / Month / ISO week / Date / Project day / Day-of-week depending on zoom. The year label is repeated every ~500 px so it remains readable while scrolling horizontally.
 - **100 % zoom button:** sets the scale to `BAR_H` px/day (= 14) once — a constant value, independent of the date filter or browser width. For reproducible export: same `.puml` + same date filter + 100 % zoom → identical output.
 - **Sticky header & label column** during scroll.
@@ -31,7 +31,7 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 ### Controls
 - **Date filter** (from / to) as a manual override; "Auto" resets to autoWindow + scales to the browser width (sticky; re-fits on panel collapse, splitter drag, window resize).
 - **Zoom** via buttons (+/−), reset, or Ctrl + mouse wheel (cursor-anchored).
-- **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
+- **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). For tasks: start, end, duration (days/weeks), completion (`is N% completed > 0`), direct predecessors and successors (with display labels from `[Display] as [alias]`). For milestones: date + predecessors/successors. The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
 - **Toggles:** milestones, notes, dependencies, critical path, auto-reload.
 - **View buttons:** `100%` (fixed zoom at 14 px/day), `Auto` (sticky resize-fit + date window expanded to all tasks), `Reset` (like Auto, but date filter preserved).
 
