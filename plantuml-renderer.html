@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.12</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.13</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -297,6 +297,13 @@ function parsePlantUML(text) {
     if (/^note\s+bottom\s*$/i.test(line)) {
       pendingNoteTarget = rawItems.findLast(it => it.type === 'task' || it.type === 'milestone');
       pendingNoteLines = [];
+      continue;
+    }
+
+    // Hyperlink (PlantUML-Standard): `[X] links to [[URL]]` — doppelte eckige Klammern um die URL.
+    if ((m = line.match(/^\[([^\]]+)\]\s+links\s+to\s+\[\[([^\]]+)\]\]\s*$/i))) {
+      const t = rawItems.findLast(it => (it.name === m[1] || it.label === m[1]) && it.type !== 'dep');
+      if (t) t.link = m[2].trim();
       continue;
     }
 
@@ -953,7 +960,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
 
   const g = []; // SVG elements
 
-  g.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" data-hdrh="${hdrH}" data-labelw="${labelW}"`,
+  g.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${totalW}" height="${totalH}" data-hdrh="${hdrH}" data-labelw="${labelW}"`,
          ` style="font-family:${FONT};font-size:${FS}px;display:block"`,
          ` text-rendering="geometricPrecision">`);
 
@@ -1049,10 +1056,16 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       continue;
     }
 
-    // Label column (right-aligned)
+    // Label column (right-aligned). If the item has a hyperlink (`[X] links to [[URL]]`),
+    // wrap the label in an SVG <a> with target="_blank" and add an underline cue.
     const displayName = r.label || r.name;
+    const linkOpen  = r.link ? `<a xlink:href="${esc(r.link)}" target="_blank">` : '';
+    const linkClose = r.link ? `</a>` : '';
+    const linkStyle = r.link ? ' style="cursor:pointer;text-decoration:underline"' : '';
+    g.push(linkOpen);
     g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
-           ` fill="${C.taskFgOut}" font-size="${FS}">${esc(displayName)}</text>`);
+           ` fill="${C.taskFgOut}" font-size="${FS}"${linkStyle}>${esc(displayName)}</text>`);
+    g.push(linkClose);
 
     if (r.type === 'task') {
       if (r.parseError) {
@@ -1076,7 +1089,9 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const barFg   = r.textColor || contrastColor(barFill);
 
         const noteAttr = r.note ? ` data-note="${esc(r.note)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}>`);
+        const barStyle = r.link ? ' style="cursor:pointer"' : '';
+        g.push(linkOpen);
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -1115,6 +1130,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         }
 
         g.push(`</g>`);
+        g.push(linkClose);
       }
 
     } else if (r.type === 'milestone') {
@@ -1125,7 +1141,9 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       if (md >= -szDays && md <= totalDays + szDays) {
         const mx = labelW + md * ppd;
         const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}>`);
+        const msStyle = r.link ? ' style="cursor:pointer"' : '';
+        g.push(linkOpen);
+        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}>`);
         g.push(`<polygon points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
                ` fill="${C.milestone}"/>`);
         if (criticalNodes.has(r.name)) {
@@ -1136,6 +1154,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         g.push(`<text x="${mx + sz + 5}" y="${my}" dy="0.35em"`,
                ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
         g.push(`</g>`);
+        g.push(linkClose);
       }
     }
 

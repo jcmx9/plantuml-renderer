@@ -57,4 +57,7 @@ then [Production deploy] lasts 1 days
 [Release tag] is colored in #c0392b/white
 [post] is colored in #2ecc71/white
 [workshop] is colored in #95a5a6/white
+
+' --- Hyperlinks ---
+[Release tag] links to [[https://github.com/jcmx9/plantuml-renderer]]
 @endgantt
