@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.4** (2026-05-23)
+> Aktuelle Version: **v26.5.5** (2026-05-23) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -181,37 +181,11 @@ Diese Trennung "Renderer = View, Git = Verwalter" hält den Renderer schlank und
 
 ---
 
-## Mini-Beispiel
+## Beispiel-Datei
 
-```
-@startgantt
-title Sprint 12 — Auth-Refactor
-Project starts 2026-05-04
-saturday are closed
-sunday are closed
+Im Repo liegt [`example.puml`](example.puml) — ein vollständiges Sprint-Beispiel mit parallelen Streams, das praktisch jede unterstützte Syntax-Form einmal zeigt: Section + Subsection, Alias-Form, absolute und relative Task-Constraints, mehrere Milestone-Varianten, `then`-Form, `->`-Pfeile, `is N% completed` / `is colored in #hex/textColor`-Modifier, Code- und Block-Kommentare sowie eine mehrzeilige `note bottom`-Notiz.
 
--- Vorbereitung --
-[Spec & Review] as [spec] starts 2026-05-04 and lasts 2 days
-note bottom of [spec] : Review-Termin mit Architektur-Team
-
--- Implementierung --
-[API-Endpoints] as [api] starts at [spec]'s end and lasts 5 days
-[Frontend-Wiring] as [fe] starts at [api]'s end and lasts 4 days
-[QA-Sweep] as [qa] starts at [fe]'s end + 1 days and lasts 2 days
-
--- Release --
-[Release-Tag] happens at [qa]'s end
-[Release-Tag] is colored in #c0392b
-[api] is 80% completed
-
-[spec] -> [api]
-[api] -> [fe]
-[fe] -> [qa]
-[qa] -> [Release-Tag]
-@endgantt
-```
-
-Lade diese Datei im Renderer, aktiviere "Kritischen Pfad hervorheben" → die ganze Kette ist rot umrandet, weil keine Parallelpfade existieren.
+Lade die Datei im Renderer, aktiviere „Kritischen Pfad hervorheben" → die längste Pfadkette (Discovery → QA → Release) ist rot umrandet, die parallelen Streams (Auth-Middleware, Migration) bleiben unmarkiert.
 
 ---
 

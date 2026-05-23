@@ -1,0 +1,60 @@
+@startgantt
+title Auth Refactor Sprint — Q2 2026
+
+' --- Project frame ---
+Project starts 2026-04-06
+saturday are closed
+sunday are closed
+2026-05-01 is closed
+2026-05-14 is closed
+
+/' Block comment:
+   This example exercises the full subset of PlantUML Gantt syntax
+   supported by the renderer. Parallel streams converge at QA. '/
+
+-- Discovery --
+[Stakeholder workshop] as [workshop] lasts 2 days
+[Tech spec] as [spec] starts at [workshop]'s end and lasts 4 days
+note bottom
+Spec review with architects.
+Confirm API contract before implementation starts.
+end note
+
+-- Implementation [2] --
+[API endpoints]    as [api]    starts at [spec]'s end and lasts 7 days
+[Auth middleware]  as [middle] starts at [spec]'s end and lasts 5 days
+[Frontend wiring]  as [fe]     starts at [api]'s end and lasts 6 days
+[Migration script] as [mig]    starts at [api]'s start + 2 days and lasts 4 days
+
+-- QA & Release --
+[QA sweep]     as [qa]     starts 1 days after [fe]'s end and lasts 3 days
+[Bug buffer]   as [bugs]   starts at [qa]'s end and lasts 2 days
+then [Production deploy] lasts 1 days
+[Release tag]                happens at [Production deploy]'s end
+[Post-release monitoring] as [post] happens on 3 days after [Release tag]'s end
+
+' --- Visual dependency arrows (no date change) ---
+[workshop] -> [spec]
+[spec] -> [api]
+[spec] -> [middle]
+[api] -> [fe]
+[api] -> [mig]
+[fe] -> [qa]
+[middle] -> [qa]
+[mig] -> [qa]
+[qa] -> [bugs]
+[bugs] -> [Production deploy]
+
+' --- Status modifiers ---
+[workshop] is 100% completed
+[spec] is 100% completed
+[api] is 60% completed
+[middle] is 40% completed
+[fe] is 20% completed
+[mig] is 50% completed
+
+' --- Highlights ---
+[Release tag] is colored in #c0392b/white
+[post] is colored in #2ecc71/white
+[workshop] is colored in #95a5a6/white
+@endgantt
