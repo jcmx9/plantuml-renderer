@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.16** (2026-05-23) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.17** (2026-05-23) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -11,6 +11,7 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 ## Features
 
 ### Render-Engine
+
 - **Vollständig client-seitig:** PlantUML-Gantt-Subset wird direkt im Browser geparst und als SVG gerendert.
 - **Live-Reload:** Polling der gewählten `.puml`-Datei alle 1 s; bei Änderung sofortiges Re-Rendering.
 - **Robustes Live-Parsen:** pro-Zeile-toleranter Parser mit Heuristiken (Eckklammer-Imbalance, verdächtiges Datum, Keyword ohne Muster). Dummy-Tasks bei Syntaxfehlern verhindern, dass Nachfolger an den Projektanfang zurückspringen. Letzter erfolgreich gerenderter Stand bleibt bei Fehlern sichtbar.
@@ -18,9 +19,10 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 - **Source-Preview** im Panel mit rot markierten Fehlerzeilen, automatisch eingeblendet bei Problemen.
 
 ### Visualisierung
+
 - **Kritischer Pfad** (CPM, Slack=0) per Toggle: rote Outline um kritische Bars/Milestones, rote Kanten auf den Pfeilen entlang der Kette. Manuelle Bar-Farben bleiben unangetastet (Outline-Frame außerhalb des Balkens).
 - **Zeitachse adaptiv:** Year / Quarter / Month / KW / Datum / Projekttag / Wochentag je nach Zoomstufe. Das Year-Label wird bei breiten Year-Ticks alle ~500 px wiederholt, damit es bei horizontalem Scrollen immer ablesbar bleibt.
-- **100%-Zoom-Toggle:** fixiert die Skala auf `BAR_H` px/Tag (= 14). Im Browser ist Zoom dann deaktiviert; Export (SVG/PNG/PDF) wird damit reproduzierbar — gleiche `.puml` + gleicher Datums-Filter → byte-identischer Output unabhängig von Display, Browser-Zoom oder Fenstergröße. Jede Zoom-Aktion (Buttons, Wheel, Fit) löst den Toggle automatisch wieder.
+- **100%-Zoom-Button:** setzt die Skala einmalig auf `BAR_H` px/Tag (= 14) — konstanter Wert, unabhängig von Datums-Filter oder Browser-Breite. Für reproduzierbaren Export: gleiche `.puml` + gleicher Datums-Filter + 100%-Zoom → identischer Output.
 - **Sticky-Header & Sticky-Label-Spalte** beim Scrollen.
 - **Dynamische Label-Spalte:** automatische Breite zwischen 200–500 px je nach längstem Task-Namen.
 - **Heute-Linie**, **Wochenend-/Feiertags-Shading**, **Progress-Overlay** (`is N% completed`), **Custom-Farben** (`is colored in #hex/TextColor`).
@@ -29,17 +31,21 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 - **Projektanfang implizit:** Wenn `Project starts` in der `.puml` fehlt, leitet der Renderer den Anfang aus dem frühesten Task/Milestone ab → `T+N`-Skala funktioniert auch ohne explizite Direktive.
 
 ### Bedienung
+
 - **Datums-Filter** (Von / Bis) als manuelle Override; "An Seite anpassen" resettet auf autoWindow + skaliert auf Browser-Breite (sticky, neu fitten bei Panel-Collapse, Splitter-Drag, Window-Resize).
 - **Zoom** per Buttons (+/−), Reset oder Strg+Mausrad (Cursor-fokussiert).
 - **Tooltips** auf Bars/Milestones/Notes (XSS-sicher via DOM-API). Notiz-Text erscheint auch dann im Hover-Tooltip, wenn der „Notizen anzeigen"-Toggle aus ist.
-- **Toggles:** Meilensteine, Notizen, Abhängigkeiten, Kritischer Pfad, 100%-Zoom, Auto-Reload.
+- **Toggles:** Meilensteine, Notizen, Abhängigkeiten, Kritischer Pfad, Auto-Reload.
+- **Ansicht-Buttons:** `100%` (fixer Zoom auf 14 px/Tag), `Reset` (Auto-Zoom fürs aktuelle Fenster), `An Seite anpassen` (alle Tasks + sticky Resize-Fit).
 
 ### Export
+
 - **SVG** (vektoriell, beliebig nachbearbeitbar).
 - **PNG** (4× Supersampling).
 - **PDF / Drucken A4 Quer** (mit eingebetteter Source-Sans-3 für schriftgenauen Druck).
 
 ### Persistenz
+
 - IndexedDB cached den zuletzt gewählten Ordner-Handle (kein Re-Picken nach Reload) und die eingebettete Druck-Font.
 - **Keine eingebaute Versionierung** — siehe [Versionierung](#versionierung).
 
@@ -71,6 +77,7 @@ http://localhost:8000/plantuml-renderer.html
 ```
 
 Vorteile:
+
 - File-System-Access-API funktioniert zuverlässig.
 - Source-Sans-3-Font lädt sauber von Google Fonts.
 - IndexedDB-Origin ist stabil (`http://localhost:8000`) — Persistenz bleibt zwischen Sessions.
@@ -92,74 +99,74 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 
 ### Projekt-Rahmen
 
-| Syntax | Wirkung |
-|---|---|
-| `@startgantt` / `@enduml` / `@endgantt` | Diagramm-Klammer (ignoriert, akzeptiert für PlantUML-Kompatibilität). |
-| `title Projektbezeichnung` | Titel oben in der Label-Spalte des SVG-Headers. |
-| `Project starts 2026-01-01` | Anker für `[X] lasts N days`-Tasks und für die Projekttag-Skala (`T1, T2…`). |
-| `saturday are closed` | Wochentag als Nicht-Arbeitstag (`monday|…|sunday`). Wird in `addWorkDays` übersprungen. |
-| `2026-12-25 is closed` | Einzelner Kalendertag als Nicht-Arbeitstag (gleiches Verhalten). |
+| Syntax                                  | Wirkung                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------- | --- | -------------------------------------------- |
+| `@startgantt` / `@enduml` / `@endgantt` | Diagramm-Klammer (ignoriert, akzeptiert für PlantUML-Kompatibilität).        |
+| `title Projektbezeichnung`              | Titel oben in der Label-Spalte des SVG-Headers.                              |
+| `Project starts 2026-01-01`             | Anker für `[X] lasts N days`-Tasks und für die Projekttag-Skala (`T1, T2…`). |
+| `saturday are closed`                   | Wochentag als Nicht-Arbeitstag (`monday                                      | …   | sunday`). Wird in`addWorkDays` übersprungen. |
+| `2026-12-25 is closed`                  | Einzelner Kalendertag als Nicht-Arbeitstag (gleiches Verhalten).             |
 
 ### Tasks
 
-| Syntax | Bedeutung |
-|---|---|
-| `[Name] starts 2026-01-01 and ends 2026-01-10` | Absolute Start- und End-Daten. |
-| `[Name] starts 2026-01-01 and lasts 5 days` | Absoluter Start + Dauer (Arbeitstage). |
-| `[Name] starts 2026-01-01 and lasts 2 weeks` | Dauer in Wochen (= 14 Tage). |
-| `[Name] lasts 5 days` | Implizit ab `Project starts`. |
-| `then [Name] lasts 3 days` | Beginnt direkt nach dem zuletzt definierten Task. |
-| `[Name] starts at [Other]'s end and lasts 3 days` | Relative Abhängigkeit auf das Ende von `[Other]`. |
-| `[Name] starts at [Other]'s end + 2 days and lasts 5 days` | Mit Offset (`+ N days/weeks`). |
-| `[Name] starts at [Other]'s start and lasts 4 days` | Beginnt zeitgleich mit `[Other]`. |
+| Syntax                                                      | Bedeutung                                          |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| `[Name] starts 2026-01-01 and ends 2026-01-10`              | Absolute Start- und End-Daten.                     |
+| `[Name] starts 2026-01-01 and lasts 5 days`                 | Absoluter Start + Dauer (Arbeitstage).             |
+| `[Name] starts 2026-01-01 and lasts 2 weeks`                | Dauer in Wochen (= 14 Tage).                       |
+| `[Name] lasts 5 days`                                       | Implizit ab `Project starts`.                      |
+| `then [Name] lasts 3 days`                                  | Beginnt direkt nach dem zuletzt definierten Task.  |
+| `[Name] starts at [Other]'s end and lasts 3 days`           | Relative Abhängigkeit auf das Ende von `[Other]`.  |
+| `[Name] starts at [Other]'s end + 2 days and lasts 5 days`  | Mit Offset (`+ N days/weeks`).                     |
+| `[Name] starts at [Other]'s start and lasts 4 days`         | Beginnt zeitgleich mit `[Other]`.                  |
 | `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative Schreibweise mit `N days/weeks after`. |
-| `[Name] starts at [Other]'s end and ends 2026-04-30` | Mischung relativ-/absolut-Ende. |
+| `[Name] starts at [Other]'s end and ends 2026-04-30`        | Mischung relativ-/absolut-Ende.                    |
 
 ### Meilensteine
 
-| Syntax | Bedeutung |
-|---|---|
-| `[Done] happens 2026-06-30` | Milestone an absolutem Datum. |
-| `[Done] happens at [X]'s end` | Am Ende eines Tasks. |
-| `[Done] happens at [X]'s end + 5 days` | Mit positivem Offset. |
-| `[Done] happens at [X]'s start` | Am Anfang eines Tasks. |
+| Syntax                                     | Bedeutung                        |
+| ------------------------------------------ | -------------------------------- |
+| `[Done] happens 2026-06-30`                | Milestone an absolutem Datum.    |
+| `[Done] happens at [X]'s end`              | Am Ende eines Tasks.             |
+| `[Done] happens at [X]'s end + 5 days`     | Mit positivem Offset.            |
+| `[Done] happens at [X]'s start`            | Am Anfang eines Tasks.           |
 | `[Done] happens on 3 days after [X]'s end` | Alternative Offset-Schreibweise. |
 
 ### Abhängigkeitspfeile
 
-| Syntax | Bedeutung |
-|---|---|
+| Syntax       | Bedeutung                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `[A] -> [B]` | Visueller Pfeil von Task A nach Task B im Chart; zusätzlich CPM-Kante. Verschiebt **kein** Datum. Für echte Constraints `[B] starts at [A]'s end …` verwenden. |
 
 ### Modifier (auf zuletzt definiertes Item)
 
-| Syntax | Bedeutung |
-|---|---|
-| `[A] is colored in #2980b9` | Bar-/Diamond-Fill. Hex-Farbe. |
-| `[A] is colored in #2980b9/white` | Fill plus Textfarbe (`/` als Trenner). |
-| `[A] is 75% completed` | Progress-Overlay (halbtransparenter dunkler Block auf der Bar). |
+| Syntax                                 | Bedeutung                                                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `[A] is colored in #2980b9`            | Bar-/Diamond-Fill. Hex-Farbe.                                                                                                           |
+| `[A] is colored in #2980b9/white`      | Fill plus Textfarbe (`/` als Trenner).                                                                                                  |
+| `[A] is 75% completed`                 | Progress-Overlay (halbtransparenter dunkler Block auf der Bar).                                                                         |
 | `[A] links to [[https://example.com]]` | Hyperlink auf Bar/Milestone und Label-Spalten-Text. Öffnet im neuen Tab. **Doppelte** eckige Klammern um die URL (PlantUML-Konvention). |
 
 ### Strukturierung
 
-| Syntax | Bedeutung |
-|---|---|
-| `-- Phase 1 --` | Section-Header (dunkler Balken über volle Breite). **Klickbar** → ein-/ausklappbar. |
-| `-- Detail [2] --` | Subsection (heller Balken, schmaler Akzent). Nicht klickbar, aber wird mit Section ausgeblendet. |
-| `[Display] as [alias] starts …` | Alias-Trick: `[alias]` ist die referenzierbare ID, `Display` der angezeigte Label-Text. |
+| Syntax                          | Bedeutung                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `-- Phase 1 --`                 | Section-Header (dunkler Balken über volle Breite). **Klickbar** → ein-/ausklappbar.              |
+| `-- Detail [2] --`              | Subsection (heller Balken, schmaler Akzent). Nicht klickbar, aber wird mit Section ausgeblendet. |
+| `[Display] as [alias] starts …` | Alias-Trick: `[alias]` ist die referenzierbare ID, `Display` der angezeigte Label-Text.          |
 
 ### Kommentare (intern, nicht gerendert)
 
-| Syntax | Bedeutung |
-|---|---|
+| Syntax                       | Bedeutung                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
 | `' Kommentar bis Zeilenende` | Einzeiliger Code-Kommentar (PlantUML-Konvention). Hat keinen Einfluss auf den Render. |
-| `/' Block-Kommentar '/` | Mehrzeiliger Block-Kommentar; alles dazwischen wird ignoriert. |
+| `/' Block-Kommentar '/`      | Mehrzeiliger Block-Kommentar; alles dazwischen wird ignoriert.                        |
 
 ### Diagramm-Notizen (im Chart sichtbar)
 
-| Syntax | Bedeutung |
-|---|---|
-| `note bottom` `…Text…` `end note` | Mehrzeilige Notiz nach einem Task/Milestone. Hängt automatisch am zuletzt definierten Task/Milestone, wird in der rechten Notiz-Spalte als erste Zeile + ` …` gerendert; der Tooltip beim Hover zeigt den vollen Text mit Zeilenumbrüchen. |
+| Syntax                            | Bedeutung                                                                                                                                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `note bottom` `…Text…` `end note` | Mehrzeilige Notiz nach einem Task/Milestone. Hängt automatisch am zuletzt definierten Task/Milestone, wird in der rechten Notiz-Spalte als erste Zeile + `…` gerendert; der Tooltip beim Hover zeigt den vollen Text mit Zeilenumbrüchen. |
 
 ### Tipps zur Praxis
 
@@ -192,13 +199,13 @@ Lade die Datei im Renderer, aktiviere „Kritischen Pfad hervorheben" → die l�
 
 ## Browser-Kompatibilität
 
-| Browser | Status | Anmerkung |
-|---|---|---|
-| Chrome ≥ 86 | ✅ vollständig | empfohlen |
-| Edge (Chromium) | ✅ vollständig | |
-| Brave / Arc / Vivaldi | ✅ vollständig | |
-| Firefox | ⚠️ eingeschränkt | kein `showDirectoryPicker`, manueller Reload nötig |
-| Safari | ⚠️ eingeschränkt | wie Firefox |
+| Browser               | Status           | Anmerkung                                          |
+| --------------------- | ---------------- | -------------------------------------------------- |
+| Chrome ≥ 86           | ✅ vollständig   | empfohlen                                          |
+| Edge (Chromium)       | ✅ vollständig   |                                                    |
+| Brave / Arc / Vivaldi | ✅ vollständig   |                                                    |
+| Firefox               | ⚠️ eingeschränkt | kein `showDirectoryPicker`, manueller Reload nötig |
+| Safari                | ⚠️ eingeschränkt | wie Firefox                                        |
 
 ---
 

@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.16** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.17** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -20,7 +20,7 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 ### Visualisation
 - **Critical path** (CPM, slack = 0) toggle: red outline around critical bars/milestones, red dependency arrows along the chain. Custom bar colours stay untouched (the outline frame is drawn outside the bar).
 - **Adaptive time scale:** Year / Quarter / Month / ISO week / Date / Project day / Day-of-week depending on zoom. The year label is repeated every ~500 px so it remains readable while scrolling horizontally.
-- **100 % zoom toggle:** locks the scale to `BAR_H` px/day (= 14). Zoom is disabled while the toggle is on; SVG/PNG/PDF export then becomes reproducible — the same `.puml` plus the same date filter produces byte-identical output regardless of display, browser zoom, or window size. Any zoom action (buttons, wheel, fit) automatically releases the toggle.
+- **100 % zoom button:** sets the scale to `BAR_H` px/day (= 14) once — a constant value, independent of the date filter or browser width. For reproducible export: same `.puml` + same date filter + 100 % zoom → identical output.
 - **Sticky header & label column** during scroll.
 - **Dynamic label column:** width adapts between 200–500 px based on the longest task name.
 - **Today line**, **weekend / holiday shading**, **progress overlay** (`is N% completed`), **custom colours** (`is colored in #hex/TextColor`).
@@ -32,7 +32,8 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 - **Date filter** (from / to) as a manual override; "Fit to page" resets to autoWindow + scales to the browser width (sticky; re-fits on panel collapse, splitter drag, window resize).
 - **Zoom** via buttons (+/−), reset, or Ctrl + mouse wheel (cursor-anchored).
 - **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
-- **Toggles:** milestones, notes, dependencies, critical path, 100 % zoom, auto-reload.
+- **Toggles:** milestones, notes, dependencies, critical path, auto-reload.
+- **View buttons:** `100%` (fixed zoom at 14 px/day), `Reset` (auto-zoom for current window), `An Seite anpassen` (all tasks + sticky resize-fit).
 
 ### Export
 - **SVG** (vector, fully editable).
