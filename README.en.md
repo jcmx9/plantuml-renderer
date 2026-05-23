@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.17** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.18** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -33,7 +33,7 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 - **Zoom** via buttons (+/−), reset, or Ctrl + mouse wheel (cursor-anchored).
 - **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
 - **Toggles:** milestones, notes, dependencies, critical path, auto-reload.
-- **View buttons:** `100%` (fixed zoom at 14 px/day), `Reset` (auto-zoom for current window), `An Seite anpassen` (all tasks + sticky resize-fit).
+- **View buttons:** `100%` (fixed zoom at 14 px/day), `Reset` (auto-zoom for current window, sticky resize-fit, date filter preserved), `An Seite anpassen` (like Reset, plus sets the date window to all tasks).
 
 ### Export
 - **SVG** (vector, fully editable).
