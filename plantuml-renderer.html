@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.20</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.21</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -927,6 +927,28 @@ function contrastColor(hex) {
 
 function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true) {
   const items = parsed.rawItems;
+
+  // Direkte Vorgänger/Nachfolger pro Task/Milestone aus afterTask + dep-Pfeilen.
+  // Implizit-temporale Edges aus computeCriticalPath bleiben außen vor — die sind
+  // nur Render-Fallback, keine logische Abhängigkeit.
+  const itemPreds = {}, itemSuccs = {};
+  for (const it of items) {
+    if (it.type === 'task' || it.type === 'milestone') {
+      itemPreds[it.name] = new Set();
+      itemSuccs[it.name] = new Set();
+    }
+  }
+  for (const it of items) {
+    if ((it.type === 'task' || it.type === 'milestone') && it.afterTask && itemPreds[it.name] && itemSuccs[it.afterTask]) {
+      itemPreds[it.name].add(it.afterTask);
+      itemSuccs[it.afterTask].add(it.name);
+    }
+    if (it.type === 'dep' && itemPreds[it.to] && itemSuccs[it.from]) {
+      itemPreds[it.to].add(it.from);
+      itemSuccs[it.from].add(it.to);
+    }
+  }
+
   const totalDays = daysBetween(wStart, wEnd);
   const tlW = totalDays * ppd;
   const hasNotes = showNotes && items.some(i => i.note);
@@ -1099,7 +1121,11 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const barStyle = r.link ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
         const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}>`);
+        const predsStr = itemPreds[r.name] ? [...itemPreds[r.name]].join(',') : '';
+        const succsStr = itemSuccs[r.name] ? [...itemSuccs[r.name]].join(',') : '';
+        const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
+        const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -1150,8 +1176,12 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const mx = labelW + md * ppd;
         const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
         const msStyle = r.link ? ' style="cursor:pointer"' : '';
+        const msPredsStr = itemPreds[r.name] ? [...itemPreds[r.name]].join(',') : '';
+        const msSuccsStr = itemSuccs[r.name] ? [...itemSuccs[r.name]].join(',') : '';
+        const msPredsAttr = msPredsStr ? ` data-preds="${esc(msPredsStr)}"` : '';
+        const msSuccsAttr = msSuccsStr ? ` data-succs="${esc(msSuccsStr)}"` : '';
         g.push(linkOpen);
-        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}>`);
+        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}${msPredsAttr}${msSuccsAttr}>`);
         g.push(`<polygon points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
                ` fill="${C.milestone}"/>`);
         if (criticalNodes.has(r.name)) {
@@ -1989,6 +2019,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tip.appendChild(document.createElement('br'));
         tip.appendChild(document.createTextNode(`Fortschritt: ${el.dataset.pct}%`));
       }
+    }
+    if (el.dataset.preds) {
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Vorgänger: ${el.dataset.preds.split(',').map(n => `[${n}]`).join(', ')}`));
+    }
+    if (el.dataset.succs) {
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Nachfolger: ${el.dataset.succs.split(',').map(n => `[${n}]`).join(', ')}`));
     }
     // Notiz am Task/Milestone (data-note auf dem <g>) anhängen — funktioniert auch bei ausgeblendetem Notizen-Toggle.
     const note = el.getAttribute('data-note');
