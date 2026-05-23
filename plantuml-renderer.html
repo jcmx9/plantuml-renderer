@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.16</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.17</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -171,12 +171,10 @@ hr { border: none; border-top: 1px solid #eef1f4; }
       <span id="zoom-label">—</span>
     </div>
     <div style="display:flex;gap:4px;margin-top:2px">
-      <button class="btn btn-secondary" id="btn-zoom-reset" title="Setzt den Zoom-Faktor auf den Auto-Wert für das aktuelle Datums-Fenster. Datums-Filter bleibt." style="flex:1;font-size:11px;padding:4px 6px">Reset Zoom</button>
-      <button class="btn btn-secondary" id="btn-fit-page" title="Setzt Datums-Fenster auf alle Tasks + Zoom auf Browser-Breite. Bleibt aktiv und passt sich bei Resize/Splitter-Drag automatisch an, bis Zoom oder Datums-Filter geändert wird." style="flex:1;font-size:11px;padding:4px 6px">An Seite anpassen</button>
+      <button class="btn btn-secondary" id="btn-zoom-100" title="Setzt Zoom auf konstante 14 px/Tag — unabhängig vom Datums-Filter und der Browser-Breite. Identischer Output über Sessions und Maschinen → für reproduzierbaren Export." style="flex:1;font-size:11px;padding:4px 6px">100%</button>
+      <button class="btn btn-secondary" id="btn-zoom-reset" title="Auto-Zoom: passt das aktuelle Datums-Fenster in die Browser-Breite. Hängt vom Datums-Filter und der Fenstergröße ab." style="flex:1;font-size:11px;padding:4px 6px">Reset</button>
+      <button class="btn btn-secondary" id="btn-fit-page" title="Setzt das Datums-Fenster auf alle Tasks und passt den Zoom an die Browser-Breite an. Bleibt aktiv und re-fittet bei Resize / Splitter-Drag, bis Zoom oder Datums-Filter manuell geändert werden." style="flex:1;font-size:11px;padding:4px 6px">An Seite anpassen</button>
     </div>
-    <label title="Fixiert die Skala auf 14 px/Tag — reproduzierbarer Export (gleiche `.puml` + gleicher Datums-Filter → identischer Output). Jede Zoom-Aktion deaktiviert den Modus automatisch." style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555;margin-top:6px">
-      <input type="checkbox" id="chk-fixed-zoom"> 100%-Zoom (Skala fixiert)
-    </label>
 
     <hr>
     <button class="btn btn-secondary" id="btn-export-svg">Export SVG</button>
@@ -1332,14 +1330,8 @@ function autoZoom(wStart, wEnd, items) {
   return Math.min(200, Math.max(0.5, (w - labelW - 40) / days));
 }
 
-function isFixedZoom() {
-  const cb = document.getElementById('chk-fixed-zoom');
-  return cb && cb.checked;
-}
-
 function applyFit() {
   if (!state.parsed || !state.wStart || !state.wEnd) return;
-  if (isFixedZoom()) { state.ppd = BAR_H; render(); return; }
   const days = daysBetween(state.wStart, state.wEnd);
   const showNotes = document.getElementById('chk-notes').checked;
   const noteW = (showNotes && state.parsed.rawItems.some(i => i.note)) ? NOTE_W : 0;
@@ -1427,9 +1419,8 @@ function render() {
 
   const days = daysBetween(state.wStart, state.wEnd);
   const bandLabel = ({year:"Jahr",quarter:"Quartal",month:"Monat",kw:"KW",week:"Woche",day:"Tag",projectday:"Projekttag"})[getBands(state.ppd, days, state.parsed?.projectStart?.getFullYear()===1900).bands.at(-1)];
-  document.getElementById('zoom-label').textContent = isFixedZoom()
-    ? `100% · ${state.ppd.toFixed(0)} px/Tag · ${bandLabel}`
-    : `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
+  document.getElementById('zoom-label').textContent =
+    `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
 }
 
 function showWarnings(warnings, fatalMsg) {
@@ -1581,9 +1572,7 @@ function processInput(text) {
   if (state.windowMode === 'auto') {
     state.wStart = nextStart;
     state.wEnd = nextEnd;
-    state.ppd = isFixedZoom() ? BAR_H : (state.fitMode ? state.ppd : nextPpd);
-  } else if (isFixedZoom()) {
-    state.ppd = BAR_H;
+    state.ppd = state.fitMode ? state.ppd : nextPpd;
   }
   showWarnings(warnings, null);
   renderSourcePreview(text, warnings);
@@ -1831,8 +1820,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chk-notes').addEventListener('change', () => render());
   document.getElementById('chk-deps').addEventListener('change', () => render());
   document.getElementById('chk-critical').addEventListener('change', () => render());
-  document.getElementById('chk-fixed-zoom').addEventListener('change', e => {
-    if (e.target.checked) { state.ppd = BAR_H; state.fitMode = false; }
+  document.getElementById('btn-zoom-100').addEventListener('click', () => {
+    state.fitMode = false;
+    state.ppd = BAR_H;
     render();
   });
 
@@ -1864,29 +1854,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.value) { state.wEnd = parseDate(e.target.value); state.windowMode = 'manual'; render(); }
   });
 
-  // Helper: jede User-initiierte Zoom-Aktion löst den 100%-Toggle aus dem Fixed-Modus.
-  function releaseFixedZoom() {
-    const cb = document.getElementById('chk-fixed-zoom');
-    if (cb && cb.checked) cb.checked = false;
-  }
   document.getElementById('btn-zoom-in').addEventListener('click', () => {
     if (!state.ppd) return;
-    releaseFixedZoom();
     state.fitMode = false; state.ppd = Math.min(200, state.ppd * 1.35); render();
   });
   document.getElementById('btn-zoom-out').addEventListener('click', () => {
     if (!state.ppd) return;
-    releaseFixedZoom();
     state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); render();
   });
   document.getElementById('btn-zoom-reset').addEventListener('click', () => {
     if (!state.wStart || !state.wEnd) return;
-    releaseFixedZoom();
     state.fitMode = false; state.windowMode = 'auto';
     state.ppd = autoZoom(state.wStart, state.wEnd, state.parsed?.rawItems || []);
     render();
   });
-  document.getElementById('btn-fit-page').addEventListener('click', () => { releaseFixedZoom(); fitToPage(); });
+  document.getElementById('btn-fit-page').addEventListener('click', fitToPage);
 
   document.getElementById('btn-export-svg').addEventListener('click', exportSVG);
   document.getElementById('btn-export-png').addEventListener('click', exportPNG);
@@ -2039,7 +2021,6 @@ document.addEventListener('DOMContentLoaded', () => {
   svgWrap.addEventListener('wheel', e => {
     if (!state.ppd || !e.ctrlKey) return;
     e.preventDefault();
-    releaseFixedZoom();
     state.fitMode = false;
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const newPpd = Math.max(0.2, Math.min(200, state.ppd * factor));
