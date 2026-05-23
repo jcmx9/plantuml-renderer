@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.11</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.12</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -719,13 +719,31 @@ function computeCriticalPath(rawItems) {
       }
     }
   }
+  // Plan-Konflikte: ein Item mit FIX-Datum (`happens DATE`, `starts DATE …`) hat einen
+  // Vorgänger, dessen End-Datum NACH dem Item-Start liegt. Der Resolver setzt die
+  // Daten stur, aber der Graph wird semantisch absurd (Nachfolger liegt zeitlich
+  // vor Ende des Vorgängers). Der Planer sollte das Datum verschieben oder die
+  // Verknüpfung entfernen.
+  const planConflicts = [];
+  for (const from of names) {
+    for (const to of succs[from]) {
+      if (nodes[from].end > nodes[to].start) {
+        planConflicts.push({
+          from, to,
+          fromEnd: nodes[from].end,
+          toStart: nodes[to].start,
+          sourceLine: nodes[to].sourceLine,
+        });
+      }
+    }
+  }
   const criticalEdges = new Set();
   for (const from of criticalNodes) {
     for (const to of succs[from]) {
       if (criticalNodes.has(to)) criticalEdges.add(from + '→' + to);
     }
   }
-  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [], isolatedItems };
+  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [], isolatedItems, planConflicts };
 }
 
 // ─── Time Scale ───────────────────────────────────────────────────────────────
@@ -1498,6 +1516,14 @@ function processInput(text) {
         warnings.push({
           lineNum: i.sourceLine || 0, raw: '',
           reason: `Isoliertes Item '[${i.name}]' — kein Vorgänger, kein Nachfolger, keine Abhängigkeit. Beabsichtigt?`,
+        });
+      }
+    }
+    if (nextCp.planConflicts?.length) {
+      for (const c of nextCp.planConflicts) {
+        warnings.push({
+          lineNum: c.sourceLine || 0, raw: '',
+          reason: `Plan-Konflikt: '[${c.to}]' beginnt am ${dateToISO(c.toStart)}, aber Vorgänger '[${c.from}]' endet erst am ${dateToISO(c.fromEnd)}.`,
         });
       }
     }
