@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.18** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.19** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -29,11 +29,11 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 - **Implicit project start:** if `Project starts` is missing in the `.puml`, the renderer derives the anchor from the earliest task/milestone → the `T+N` scale still works.
 
 ### Controls
-- **Date filter** (from / to) as a manual override; "Fit to page" resets to autoWindow + scales to the browser width (sticky; re-fits on panel collapse, splitter drag, window resize).
+- **Date filter** (from / to) as a manual override; "Auto" resets to autoWindow + scales to the browser width (sticky; re-fits on panel collapse, splitter drag, window resize).
 - **Zoom** via buttons (+/−), reset, or Ctrl + mouse wheel (cursor-anchored).
 - **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
 - **Toggles:** milestones, notes, dependencies, critical path, auto-reload.
-- **View buttons:** `100%` (fixed zoom at 14 px/day), `Reset` (auto-zoom for current window, sticky resize-fit, date filter preserved), `An Seite anpassen` (like Reset, plus sets the date window to all tasks).
+- **View buttons:** `100%` (fixed zoom at 14 px/day), `Reset` (auto-zoom for current window, sticky resize-fit, date filter preserved), `Auto` (like Reset, plus sets the date window to all tasks).
 
 ### Export
 - **SVG** (vector, fully editable).
