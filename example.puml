@@ -59,5 +59,6 @@ then [Production deploy] lasts 1 days
 [workshop] is colored in #95a5a6/white
 
 ' --- Hyperlinks ---
-[Release tag] links to [[https://github.com/jcmx9/plantuml-renderer]]
+[spec] links to [[https://github.com/jcmx9/plantuml-renderer]]
+[Release tag] links to [[https://github.com/jcmx9/plantuml-renderer/releases]]
 @endgantt

@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.14</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.15</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1098,7 +1098,8 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const noteAttr = r.note ? ` data-note="${esc(r.note)}"` : '';
         const barStyle = r.link ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}>`);
+        const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -1999,6 +2000,10 @@ document.addEventListener('DOMContentLoaded', () => {
       tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
       tip.appendChild(document.createElement('br'));
       tip.appendChild(document.createTextNode(`Dauer: ${days} Tage (${weeks} ${weeks === 1 ? 'Woche' : 'Wochen'})`));
+      if (el.dataset.pct) {
+        tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(`Fortschritt: ${el.dataset.pct}%`));
+      }
     }
     // Notiz am Task/Milestone (data-note auf dem <g>) anhängen — funktioniert auch bei ausgeblendetem Notizen-Toggle.
     const note = el.getAttribute('data-note');
