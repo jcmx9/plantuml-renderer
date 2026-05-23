@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.15</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.16</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -153,9 +153,6 @@ hr { border: none; border-top: 1px solid #eef1f4; }
     <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
       <input type="checkbox" id="chk-critical"> Kritischen Pfad hervorheben
     </label>
-    <label title="Fixiert die Skala auf BAR_H px/Tag — reproduzierbarer Export, kein freier Zoom." style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
-      <input type="checkbox" id="chk-fixed-zoom"> 100%-Zoom (Skala fixiert)
-    </label>
     <div style="display:flex;gap:4px;margin-top:2px">
       <button class="btn btn-secondary" id="btn-collapse-all" style="font-size:11px;padding:4px 6px">Alle einklappen</button>
       <button class="btn btn-secondary" id="btn-expand-all" style="font-size:11px;padding:4px 6px">Alle ausklappen</button>
@@ -167,14 +164,19 @@ hr { border: none; border-top: 1px solid #eef1f4; }
     <div class="ctrl-row"><span>Von</span><input type="date" id="date-from"></div>
     <div class="ctrl-row"><span>Bis</span><input type="date" id="date-to"></div>
 
-    <div class="section-label">Zoom</div>
+    <div class="section-label">Ansicht</div>
     <div class="zoom-row">
-      <button class="zoom-btn" id="btn-zoom-out" title="Herauszoomen">−</button>
-      <button class="zoom-btn" id="btn-zoom-in" title="Hineinzoomen">+</button>
+      <button class="zoom-btn" id="btn-zoom-out" title="Herauszoomen (oder Strg+Mausrad nach unten)">−</button>
+      <button class="zoom-btn" id="btn-zoom-in" title="Hineinzoomen (oder Strg+Mausrad nach oben)">+</button>
       <span id="zoom-label">—</span>
-      <button class="btn btn-secondary" id="btn-zoom-reset" style="width:auto">Reset</button>
     </div>
-    <button class="btn btn-secondary" id="btn-fit-page">An Seite anpassen</button>
+    <div style="display:flex;gap:4px;margin-top:2px">
+      <button class="btn btn-secondary" id="btn-zoom-reset" title="Setzt den Zoom-Faktor auf den Auto-Wert für das aktuelle Datums-Fenster. Datums-Filter bleibt." style="flex:1;font-size:11px;padding:4px 6px">Reset Zoom</button>
+      <button class="btn btn-secondary" id="btn-fit-page" title="Setzt Datums-Fenster auf alle Tasks + Zoom auf Browser-Breite. Bleibt aktiv und passt sich bei Resize/Splitter-Drag automatisch an, bis Zoom oder Datums-Filter geändert wird." style="flex:1;font-size:11px;padding:4px 6px">An Seite anpassen</button>
+    </div>
+    <label title="Fixiert die Skala auf 14 px/Tag — reproduzierbarer Export (gleiche `.puml` + gleicher Datums-Filter → identischer Output). Jede Zoom-Aktion deaktiviert den Modus automatisch." style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555;margin-top:6px">
+      <input type="checkbox" id="chk-fixed-zoom"> 100%-Zoom (Skala fixiert)
+    </label>
 
     <hr>
     <button class="btn btn-secondary" id="btn-export-svg">Export SVG</button>
