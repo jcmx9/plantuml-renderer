@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.22** (2026-05-23) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.23** (2026-05-23) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -15,12 +15,12 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 - **Vollständig client-seitig:** PlantUML-Gantt-Subset wird direkt im Browser geparst und als SVG gerendert.
 - **Live-Reload:** Polling der gewählten `.puml`-Datei alle 1 s; bei Änderung sofortiges Re-Rendering.
 - **Robustes Live-Parsen:** pro-Zeile-toleranter Parser mit Heuristiken (Eckklammer-Imbalance, verdächtiges Datum, Keyword ohne Muster). Dummy-Tasks bei Syntaxfehlern verhindern, dass Nachfolger an den Projektanfang zurückspringen. Letzter erfolgreich gerenderter Stand bleibt bei Fehlern sichtbar.
-- **Strukturiertes Warn-Banner** mit Zeilennummern pro Fehler.
+- **Strukturiertes Warn-Banner** mit Zeilennummern pro Fehler. Plus Lint-Warnungen: **isolierte Items** (kein Vorgänger, kein Nachfolger, keine Abhängigkeit) und **Plan-Konflikte** (Vorgänger endet nach Nachfolger-Start, bei FS-Beziehungen).
 - **Source-Preview** im Panel mit rot markierten Fehlerzeilen, automatisch eingeblendet bei Problemen.
 
 ### Visualisierung
 
-- **Kritischer Pfad** (CPM, Slack=0) per Toggle: rote Outline um kritische Bars/Milestones, rote Kanten auf den Pfeilen entlang der Kette. Manuelle Bar-Farben bleiben unangetastet (Outline-Frame außerhalb des Balkens).
+- **Kritischer Pfad** (CPM, Slack=0) per Toggle: rote Outline um kritische Bars/Milestones, rote Kanten auf den Pfeilen entlang der Kette. Manuelle Bar-Farben bleiben unangetastet (Outline-Frame außerhalb des Balkens). Backward-Pass ist **Lag-aware** (Offsets in `+ N days` propagieren Slack korrekt) und unterscheidet **hard edges** (`afterTask`, verschieben den Nachfolger) von **soft edges** (`->`-Pfeile, nur logische Reihenfolge). SS-Beziehungen (`at [Y]'s start + N`) werden korrekt als Parallel-Beziehung behandelt.
 - **Zeitachse adaptiv:** Year / Quarter / Month / KW / Datum / Projekttag / Wochentag je nach Zoomstufe. Das Year-Label wird bei breiten Year-Ticks alle ~500 px wiederholt, damit es bei horizontalem Scrollen immer ablesbar bleibt.
 - **100%-Zoom-Button:** setzt die Skala einmalig auf `BAR_H` px/Tag (= 14) — konstanter Wert, unabhängig von Datums-Filter oder Browser-Breite. Für reproduzierbaren Export: gleiche `.puml` + gleicher Datums-Filter + 100%-Zoom → identischer Output.
 - **Sticky-Header & Sticky-Label-Spalte** beim Scrollen.
@@ -34,7 +34,7 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 
 - **Datums-Filter** (Von / Bis) als manuelle Override; "Auto" resettet auf autoWindow + skaliert auf Browser-Breite (sticky, neu fitten bei Panel-Collapse, Splitter-Drag, Window-Resize).
 - **Zoom** per Buttons (+/−), Reset oder Strg+Mausrad (Cursor-fokussiert).
-- **Tooltips** auf Bars/Milestones/Notes (XSS-sicher via DOM-API). Notiz-Text erscheint auch dann im Hover-Tooltip, wenn der „Notizen anzeigen"-Toggle aus ist.
+- **Tooltips** auf Bars/Milestones/Notes (XSS-sicher via DOM-API). Bei Tasks: Start, Ende, Dauer (Tage/Wochen), Fortschritt (`is N% completed > 0`), direkte Vorgänger und Nachfolger (mit Anzeige-Labels aus `[Display] as [alias]`). Bei Milestones: Datum + Vorgänger/Nachfolger. Notiz-Text erscheint auch dann im Hover-Tooltip, wenn der „Notizen anzeigen"-Toggle aus ist.
 - **Toggles:** Meilensteine, Notizen, Abhängigkeiten, Kritischer Pfad, Auto-Reload.
 - **Ansicht-Buttons:** `100%` (fixer Zoom auf 14 px/Tag), `Auto` (sticky Resize-Fit + Datums-Fenster auf alle Tasks), `Reset` (wie Auto, aber Datums-Filter bleibt).
 
