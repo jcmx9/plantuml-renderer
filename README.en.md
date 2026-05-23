@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.12** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.13** (2026-05-23) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -138,6 +138,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[A] is colored in #2980b9` | Bar/diamond fill. Hex colour. |
 | `[A] is colored in #2980b9/white` | Fill plus text colour (`/` as separator). |
 | `[A] is 75% completed` | Progress overlay (semi-transparent dark block on the bar). |
+| `[A] links to [[https://example.com]]` | Hyperlink on the bar/milestone and the label-column text. Opens in a new tab. **Double** square brackets around the URL (PlantUML convention). |
 
 ### Structure
 
