@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.9</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.10</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -603,6 +603,13 @@ function computeCriticalPath(rawItems) {
       addEdge(it.from, it.to);
     }
   }
+  // Snapshot der Knoten, die durch explizite Kanten (afterTask + dep) verbunden sind.
+  // Implizit-temporale Kanten zählen für Isolated-Detection nicht — sie sind ein
+  // Render-Fallback, kein Beleg für eine logische Abhängigkeit.
+  const explicitlyConnected = new Set();
+  for (const n of names) {
+    if (preds[n].size > 0 || succs[n].size > 0) explicitlyConnected.add(n);
+  }
   for (const n of names) {
     if (preds[n].size > 0) continue;
     const t = nodes[n];
@@ -657,9 +664,16 @@ function computeCriticalPath(rawItems) {
     if (succs[n].size === 0) {
       LF[n] = projectEnd;
     } else {
-      let minLS = Infinity;
-      for (const s of succs[n]) if (LS[s] < minLS) minLS = LS[s];
-      LF[n] = minLS;
+      // Lag-aware: LF[n] = EF[n] + min(slack[s]). Naive `LF = min(LS[s])`
+      // würde Lücken zwischen Tasks (`+ N days`-Offset, `starts N days after …`)
+      // wie freien Puffer rechnen — dann erbt jeder Vorgänger fälschlich Slack
+      // und nur das Pfad-Ende erscheint kritisch.
+      let minSlack = Infinity;
+      for (const s of succs[n]) {
+        const slackS = LS[s] - ES[s];
+        if (slackS < minSlack) minSlack = slackS;
+      }
+      LF[n] = EF[n] + minSlack;
     }
     LS[n] = LF[n] - dur[n];
   }
@@ -668,13 +682,24 @@ function computeCriticalPath(rawItems) {
   for (const n of names) {
     if (Math.abs(LS[n] - ES[n]) < 0.5) criticalNodes.add(n);
   }
+  // Isolated Items: ohne explizite Vorgänger und Nachfolger werden sie aus
+  // criticalNodes entfernt — „kritisch" ist für isoliert stehende Items irreführend.
+  const isolatedItems = [];
+  if (names.length > 1) {
+    for (const n of names) {
+      if (!explicitlyConnected.has(n)) {
+        isolatedItems.push({ name: n, sourceLine: nodes[n].sourceLine });
+        criticalNodes.delete(n);
+      }
+    }
+  }
   const criticalEdges = new Set();
   for (const from of criticalNodes) {
     for (const to of succs[from]) {
       if (criticalNodes.has(to)) criticalEdges.add(from + '→' + to);
     }
   }
-  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [] };
+  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [], isolatedItems };
 }
 
 // ─── Time Scale ───────────────────────────────────────────────────────────────
@@ -1439,6 +1464,14 @@ function processInput(text) {
         warnings.push({
           lineNum: d.sourceLine || 0, raw: '',
           reason: `Abhängigkeit '[${d.afterTask}]' für '[${d.name}]' nicht auflösbar`,
+        });
+      }
+    }
+    if (nextCp.isolatedItems?.length) {
+      for (const i of nextCp.isolatedItems) {
+        warnings.push({
+          lineNum: i.sourceLine || 0, raw: '',
+          reason: `Isoliertes Item '[${i.name}]' — kein Vorgänger, kein Nachfolger, keine Abhängigkeit. Beabsichtigt?`,
         });
       }
     }
