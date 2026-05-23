@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.21</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.22</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -931,11 +931,14 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
   // Direkte Vorgänger/Nachfolger pro Task/Milestone aus afterTask + dep-Pfeilen.
   // Implizit-temporale Edges aus computeCriticalPath bleiben außen vor — die sind
   // nur Render-Fallback, keine logische Abhängigkeit.
-  const itemPreds = {}, itemSuccs = {};
+  // Mapping vom internen Namen (Alias) zum Display-Label, damit der Tooltip
+  // die im Gantt sichtbaren Namen zeigt, nicht den technischen Alias.
+  const itemPreds = {}, itemSuccs = {}, itemLabels = {};
   for (const it of items) {
     if (it.type === 'task' || it.type === 'milestone') {
       itemPreds[it.name] = new Set();
       itemSuccs[it.name] = new Set();
+      itemLabels[it.name] = it.label || it.name;
     }
   }
   for (const it of items) {
@@ -948,6 +951,8 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       itemSuccs[it.from].add(it.to);
     }
   }
+  // Separator `|` für die data-Attribute, weil Labels Kommas enthalten dürfen.
+  const namesToLabels = nameSet => [...nameSet].map(n => itemLabels[n] || n).join('|');
 
   const totalDays = daysBetween(wStart, wEnd);
   const tlW = totalDays * ppd;
@@ -1121,8 +1126,8 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const barStyle = r.link ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
         const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
-        const predsStr = itemPreds[r.name] ? [...itemPreds[r.name]].join(',') : '';
-        const succsStr = itemSuccs[r.name] ? [...itemSuccs[r.name]].join(',') : '';
+        const predsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
+        const succsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
         const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
         g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
@@ -1176,8 +1181,8 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const mx = labelW + md * ppd;
         const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
         const msStyle = r.link ? ' style="cursor:pointer"' : '';
-        const msPredsStr = itemPreds[r.name] ? [...itemPreds[r.name]].join(',') : '';
-        const msSuccsStr = itemSuccs[r.name] ? [...itemSuccs[r.name]].join(',') : '';
+        const msPredsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
+        const msSuccsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const msPredsAttr = msPredsStr ? ` data-preds="${esc(msPredsStr)}"` : '';
         const msSuccsAttr = msSuccsStr ? ` data-succs="${esc(msSuccsStr)}"` : '';
         g.push(linkOpen);
@@ -2022,11 +2027,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (el.dataset.preds) {
       tip.appendChild(document.createElement('br'));
-      tip.appendChild(document.createTextNode(`Vorgänger: ${el.dataset.preds.split(',').map(n => `[${n}]`).join(', ')}`));
+      tip.appendChild(document.createTextNode(`Vorgänger: ${el.dataset.preds.split('|').map(n => `[${n}]`).join(', ')}`));
     }
     if (el.dataset.succs) {
       tip.appendChild(document.createElement('br'));
-      tip.appendChild(document.createTextNode(`Nachfolger: ${el.dataset.succs.split(',').map(n => `[${n}]`).join(', ')}`));
+      tip.appendChild(document.createTextNode(`Nachfolger: ${el.dataset.succs.split('|').map(n => `[${n}]`).join(', ')}`));
     }
     // Notiz am Task/Milestone (data-note auf dem <g>) anhängen — funktioniert auch bei ausgeblendetem Notizen-Toggle.
     const note = el.getAttribute('data-note');
