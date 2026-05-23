@@ -132,7 +132,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.13</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.14</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -602,15 +602,21 @@ function computeCriticalPath(rawItems) {
   // Soft edges: nur dep-Pfeile oder implizit-temporale Kanten — visualisieren
   // eine logische Reihenfolge, halten aber kein Datum fest.
   const hardEdges = new Set();
-  const addEdge = (from, to, hard = false) => {
+  // SS-Edges (Start-Start, also `afterWhat === 'start'`) sind keine FS-Beziehung —
+  // der Nachfolger läuft parallel zum Vorgänger. Konflikt-Check ignoriert sie,
+  // weil from.end > to.start dort der Normalfall, nicht der Konflikt ist.
+  const ssEdges = new Set();
+  const addEdge = (from, to, hard = false, ss = false) => {
     if (!nodes[from] || !nodes[to] || from === to) return;
     preds[to].add(from);
     succs[from].add(to);
-    if (hard) hardEdges.add(from + '→' + to);
+    const key = from + '→' + to;
+    if (hard) hardEdges.add(key);
+    if (ss) ssEdges.add(key);
   };
   for (const it of rawItems) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
-      addEdge(it.afterTask, it.name, true);
+      addEdge(it.afterTask, it.name, true, it.afterWhat === 'start');
     }
     if (it.type === 'dep') {
       addEdge(it.from, it.to, false);
@@ -726,14 +732,15 @@ function computeCriticalPath(rawItems) {
       }
     }
   }
-  // Plan-Konflikte: ein Item mit FIX-Datum (`happens DATE`, `starts DATE …`) hat einen
-  // Vorgänger, dessen End-Datum NACH dem Item-Start liegt. Der Resolver setzt die
-  // Daten stur, aber der Graph wird semantisch absurd (Nachfolger liegt zeitlich
-  // vor Ende des Vorgängers). Der Planer sollte das Datum verschieben oder die
-  // Verknüpfung entfernen.
+  // Plan-Konflikte: FS-Beziehung mit Vorgänger.end > Nachfolger.start ist semantisch
+  // absurd (Nachfolger sitzt zeitlich vor Ende des Vorgängers). SS-Beziehungen
+  // (`afterWhat === 'start'`) sind keine Konflikte — der Nachfolger läuft dort
+  // bewusst parallel.
   const planConflicts = [];
   for (const from of names) {
     for (const to of succs[from]) {
+      const key = from + '→' + to;
+      if (ssEdges.has(key)) continue;
       if (nodes[from].end > nodes[to].start) {
         planConflicts.push({
           from, to,
