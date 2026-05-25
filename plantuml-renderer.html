@@ -71,7 +71,6 @@ input[type="date"]:focus { outline: none; border-color: #2980b9; }
 }
 .zoom-btn:hover { background: #eef1f4; }
 #zoom-label { font-size: 11px; color: #8a9bb0; flex: 1; text-align: center; }
-#btn-zoom-reset { font-size: 11px; padding: 4px 8px; }
 
 hr { border: none; border-top: 1px solid #eef1f4; }
 
@@ -132,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.23</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.24</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -173,7 +172,6 @@ hr { border: none; border-top: 1px solid #eef1f4; }
     <div style="display:flex;gap:4px;margin-top:2px">
       <button class="btn btn-secondary" id="btn-zoom-100" title="Setzt Zoom auf konstante 14 px/Tag — unabhängig vom Datums-Filter und der Browser-Breite. Identischer Output über Sessions und Maschinen → für reproduzierbaren Export." style="flex:1;font-size:11px;padding:4px 6px">100%</button>
       <button class="btn btn-secondary" id="btn-fit-page" title="Setzt das Datums-Fenster auf alle Tasks, Auto-Zoom auf Browser-Breite. Sticky bei Resize / Splitter-Drag / Panel-Collapse, bis Zoom oder Datums-Filter manuell geändert werden." style="flex:1;font-size:11px;padding:4px 6px">Auto</button>
-      <button class="btn btn-secondary" id="btn-zoom-reset" title="Wie Auto, aber das Datums-Fenster bleibt unverändert — Auto-Zoom nur fürs aktuelle Fenster, sticky." style="flex:1;font-size:11px;padding:4px 6px">Reset</button>
     </div>
 
     <hr>
@@ -1896,13 +1894,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-zoom-out').addEventListener('click', () => {
     if (!state.ppd) return;
     state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); render();
-  });
-  document.getElementById('btn-zoom-reset').addEventListener('click', () => {
-    if (!state.wStart || !state.wEnd) return;
-    // Wie 'An Seite anpassen', nur ohne das Datums-Fenster zu überschreiben:
-    // sticky-Fit auf das aktuelle Fenster, passt sich bei Panel-Collapse / Splitter-Drag / Resize an.
-    state.fitMode = true;
-    applyFit();
   });
   document.getElementById('btn-fit-page').addEventListener('click', fitToPage);
 

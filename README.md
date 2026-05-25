@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.23** (2026-05-23) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.24** (2026-05-25) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -33,10 +33,10 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 ### Bedienung
 
 - **Datums-Filter** (Von / Bis) als manuelle Override; "Auto" resettet auf autoWindow + skaliert auf Browser-Breite (sticky, neu fitten bei Panel-Collapse, Splitter-Drag, Window-Resize).
-- **Zoom** per Buttons (+/−), Reset oder Strg+Mausrad (Cursor-fokussiert).
+- **Zoom** per Buttons (+/−) oder Strg+Mausrad (Cursor-fokussiert).
 - **Tooltips** auf Bars/Milestones/Notes (XSS-sicher via DOM-API). Bei Tasks: Start, Ende, Dauer (Tage/Wochen), Fortschritt (`is N% completed > 0`), direkte Vorgänger und Nachfolger (mit Anzeige-Labels aus `[Display] as [alias]`). Bei Milestones: Datum + Vorgänger/Nachfolger. Notiz-Text erscheint auch dann im Hover-Tooltip, wenn der „Notizen anzeigen"-Toggle aus ist.
 - **Toggles:** Meilensteine, Notizen, Abhängigkeiten, Kritischer Pfad, Auto-Reload.
-- **Ansicht-Buttons:** `100%` (fixer Zoom auf 14 px/Tag), `Auto` (sticky Resize-Fit + Datums-Fenster auf alle Tasks), `Reset` (wie Auto, aber Datums-Filter bleibt).
+- **Ansicht-Buttons:** `100%` (fixer Zoom auf 14 px/Tag, für reproduzierbaren Export) und `Auto` (sticky Resize-Fit + Datums-Fenster auf alle Tasks).
 
 ### Export
 
