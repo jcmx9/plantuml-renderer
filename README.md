@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.26** (2026-05-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.27** (2026-05-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -106,6 +106,8 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `Project starts 2026-01-01`             | Anker für `[X] lasts N days`-Tasks und für die Projekttag-Skala (`T1, T2…`). |
 | `saturday are closed`                   | Wochentag als Nicht-Arbeitstag (`monday                                      | …   | sunday`). Wird in`addWorkDays` übersprungen. |
 | `2026-12-25 is closed`                  | Einzelner Kalendertag als Nicht-Arbeitstag (gleiches Verhalten).             |
+| `2026-12-24 to 2026-12-26 are closed`   | Datums-Bereich als Nicht-Arbeitstage (Range expandiert in `closedDates`).    |
+| `2026-05-23 is open`                    | Reopen-Override: einzelner Tag bleibt offen, auch wenn z. B. `saturday are closed` greift. |
 
 ### Tasks
 

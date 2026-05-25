@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.26</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.27</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -206,7 +206,13 @@ function parseDuration(num, unit) {
   return unit.toLowerCase().startsWith('week') ? parseInt(num, 10) * 7 : parseInt(num, 10);
 }
 
-function addWorkDays(date, n, closedDates, closedWeekdays) {
+function isClosedDay(date, closedDates, closedWeekdays, openOverrides) {
+  const iso = dateToISO(date);
+  if (openOverrides && openOverrides.has(iso)) return false;
+  return closedWeekdays.has(date.getDay()) || closedDates.has(iso);
+}
+
+function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides) {
   if (!closedDates.size && !closedWeekdays.size) return addDays(date, n);
   // Schutz vor Endlosschleife bei kaputtem Input (NaN, negativ): fallback auf einfaches addDays.
   if (!Number.isFinite(n) || n < 0) return addDays(date, n);
@@ -214,7 +220,7 @@ function addWorkDays(date, n, closedDates, closedWeekdays) {
   let remaining = n;
   while (remaining > 0) {
     cur = addDays(cur, 1);
-    if (!closedWeekdays.has(cur.getDay()) && !closedDates.has(dateToISO(cur))) remaining--;
+    if (!isClosedDay(cur, closedDates, closedWeekdays, openOverrides)) remaining--;
   }
   return cur;
 }
@@ -247,6 +253,7 @@ function parsePlantUML(text) {
   let projectStart = null;
   const closedDates    = new Set();
   const closedWeekdays = new Set();
+  const openOverrides  = new Set();
   let lastTaskName = null;
   let pendingNoteTarget = null;
   let pendingNoteLines = [];
@@ -318,9 +325,31 @@ function parsePlantUML(text) {
       closedWeekdays.add(WEEKDAY_MAP[m[1].toLowerCase()]); continue;
     }
 
+    // Closed date range: 2026-12-24 to 2026-12-26 are closed
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})\s+(?:are|is)\s+closed/i))) {
+      const from = parseDate(m[1]);
+      const to   = parseDate(m[2]);
+      if (from && to && from <= to) {
+        let cur = new Date(from);
+        // Hartes Limit (10 Jahre) gegen pathologische Eingaben.
+        for (let n = 0; n <= 3650 && cur <= to; n++) {
+          closedDates.add(dateToISO(cur));
+          cur = addDays(cur, 1);
+        }
+      }
+      continue;
+    }
+
     // Closed date: 2026-12-25 is closed
     if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+closed/i))) {
       closedDates.add(m[1]); continue;
+    }
+
+    // Reopen-Override: 2026-05-23 is open  (überschreibt z. B. "saturday are closed")
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+open/i))) {
+      openOverrides.add(m[1]);
+      closedDates.delete(m[1]); // falls vorher explizit closed gesetzt, ebenfalls aufheben
+      continue;
     }
 
     // Dependency arrow: [A] -> [B]
@@ -526,12 +555,12 @@ function parsePlantUML(text) {
     }
   }
 
-  return { title, projectStart, rawItems, closedDates, closedWeekdays, parseWarnings };
+  return { title, projectStart, rawItems, closedDates, closedWeekdays, openOverrides, parseWarnings };
 }
 
 // ─── Dependency Resolver ─────────────────────────────────────────────────────
 
-function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()) {
+function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set(), openOverrides = new Set()) {
   const map = {};
   for (const it of items) {
     if (it.type === 'task' || it.type === 'milestone') map[it.name] = it;
@@ -540,7 +569,7 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
   // Resolve absolute-start tasks that need end computed from duration
   for (const it of items) {
     if (it.type === 'task' && it.start && !it.end && it.duration != null)
-      it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays);
+      it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays, openOverrides);
   }
 
   // Resolve dependency-based tasks (multi-pass for chains)
@@ -555,12 +584,12 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
       const depEnd = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
       if (!depEnd) { dirty = true; continue; }
 
-      const s = addWorkDays(depEnd, it.offset || 0, closedDates, closedWeekdays);
+      const s = addWorkDays(depEnd, it.offset || 0, closedDates, closedWeekdays, openOverrides);
       if (it.type === 'milestone') {
         it.date = s;
       } else {
         it.start = s;
-        if (!it.end) it.end = addWorkDays(s, it.duration || 1, closedDates, closedWeekdays);
+        if (!it.end) it.end = addWorkDays(s, it.duration || 1, closedDates, closedWeekdays, openOverrides);
       }
     }
     if (!dirty) break;
@@ -929,7 +958,7 @@ function contrastColor(hex) {
   return 1.05/(L+0.05) >= (L+0.05)/0.088 ? '#fff' : '#1e3a4c';
 }
 
-function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true) {
+function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true, openOverrides = new Set()) {
   const items = parsed.rawItems;
 
   // Direkte Vorgänger/Nachfolger pro Task/Milestone aus afterTask + dep-Pfeilen.
@@ -1051,8 +1080,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
   if (ppd >= 3 && (closedDates.size || closedWeekdays.size)) {
     let cur = new Date(wStart);
     while (cur < wEnd) {
-      const iso = dateToISO(cur);
-      if (closedWeekdays.has(cur.getDay()) || closedDates.has(iso)) {
+      if (isClosedDay(cur, closedDates, closedWeekdays, openOverrides)) {
         const d = daysBetween(wStart, cur);
         const x = labelW + d * ppd;
         g.push(`<rect x="${x}" y="${hdrH}" width="${ppd}" height="${totalH - hdrH}" fill="rgba(0,0,0,0.06)"/>`);
@@ -1411,7 +1439,7 @@ function render() {
     const ce = showCrit ? state.cp.criticalEdges : new Set();
     svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
                    state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
-                   state.collapsedSections, showNotes);
+                   state.collapsedSections, showNotes, state.parsed.openOverrides);
   } catch (e) {
     // Render-Fehler: bestehendes SVG NICHT antasten, nur Warnung anzeigen.
     showWarnings([], 'Render-Fehler: ' + (e.message || e));
@@ -1541,7 +1569,7 @@ function processInput(text) {
   let nextParsed, nextCp, nextStart, nextEnd, nextPpd, warnings;
   try {
     nextParsed = parsePlantUML(text);
-    resolveItems(nextParsed.rawItems, nextParsed.closedDates, nextParsed.closedWeekdays);
+    resolveItems(nextParsed.rawItems, nextParsed.closedDates, nextParsed.closedWeekdays, nextParsed.openOverrides);
     nextCp = computeCriticalPath(nextParsed.rawItems);
     warnings = [...(nextParsed.parseWarnings || [])];
     if (nextCp.cycleDetected) {
