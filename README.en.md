@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.23** (2026-05-23) · German version: [README.md](README.md)
+> Current version: **v26.5.24** (2026-05-25) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -30,10 +30,10 @@ Single-file web application that renders a subset of **PlantUML Gantt syntax** n
 
 ### Controls
 - **Date filter** (from / to) as a manual override; "Auto" resets to autoWindow + scales to the browser width (sticky; re-fits on panel collapse, splitter drag, window resize).
-- **Zoom** via buttons (+/−), reset, or Ctrl + mouse wheel (cursor-anchored).
+- **Zoom** via buttons (+/−) or Ctrl + mouse wheel (cursor-anchored).
 - **Tooltips** on bars/milestones/notes (XSS-safe via DOM API). For tasks: start, end, duration (days/weeks), completion (`is N% completed > 0`), direct predecessors and successors (with display labels from `[Display] as [alias]`). For milestones: date + predecessors/successors. The note text shows up in the hover tooltip even when the "Show notes" toggle is off.
 - **Toggles:** milestones, notes, dependencies, critical path, auto-reload.
-- **View buttons:** `100%` (fixed zoom at 14 px/day), `Auto` (sticky resize-fit + date window expanded to all tasks), `Reset` (like Auto, but date filter preserved).
+- **View buttons:** `100%` (fixed zoom at 14 px/day, for reproducible export) and `Auto` (sticky resize-fit + date window expanded to all tasks).
 
 ### Export
 - **SVG** (vector, fully editable).
