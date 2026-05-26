@@ -15,7 +15,7 @@ sunday are closed
 -- Discovery --
 [Stakeholder workshop] as [workshop] lasts 2 days
 [Tech spec] as [spec] starts at [workshop]'s end and lasts 4 days
-[Vendor briefing] as [vend] starts 2026-05-21 and lasts 1 week
+[Vendor briefing] as [vend] starts 2026-05-21 and requires 1 week and 4 days
 note bottom
 Spec review with architects.
 Confirm API contract before implementation starts.
@@ -36,8 +36,7 @@ end note
 
 -- QA & Release --
 [QA sweep]     as [qa]     starts 1 days after [fe]'s end and lasts 3 days
-[Bug buffer]   as [bugs]   starts at [qa]'s end and lasts 2 days
-then [Production deploy] lasts 1 days
+[Bug buffer]   as [bugs]   starts at [qa]'s end and lasts 2 days then [Production deploy] lasts 1 days
 [Release tag]                happens at [Production deploy]'s end
 [Post-release monitoring] as [post] happens on 3 days after [Release tag]'s end
 
