@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.27** (2026-05-26) · German version: [README.md](README.md)
+> Current version: **v26.5.28** (2026-05-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -117,6 +117,10 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[Name] starts at [Other]'s start and lasts 4 days` | Starts simultaneously with `[Other]`. |
 | `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative `N days/weeks after` form. |
 | `[Name] starts at [Other]'s end and ends 2026-04-30` | Relative start + absolute end. |
+| `[Name] starts 1 day before [Other]'s start` | Backward constraint (start relative-before pivot). |
+| `[Name] starts 2 days before [Other]'s end and lasts 5 days` | Backward + duration. |
+| `[Name] requires 5 days and ends at [Other]'s end` | Duration + end-anchor (start derived backwards). |
+| `[Name] starts 1 day before [Y]'s start and ends at [Y]'s end` | Start and end anchored to the same pivot (doc example). |
 
 > **Synonym:** `requires` is a 1:1 substitute for `lasts` everywhere (PlantUML doc standard). Example: `[Name] requires 5 days` ≡ `[Name] lasts 5 days`.
 
