@@ -7,7 +7,6 @@ Project starts 2026-05-18
 saturday are closed
 sunday are closed
 2026-05-25 is closed
-2026-06-04 is closed
 2026-06-22 to 2026-06-24 are closed
 2026-06-23 is open
 
@@ -77,6 +76,7 @@ end note
 [Sync with api] requires 3 days and ends at [api]'s end
 
 ' --- Milestones (absolute / pivot variants + backward) ---
+[Demo anchor] happens 2026-05-15
 [Kick-off]    happens 2026-05-18
 [QA gate]     happens at [qa]'s start
 [Bug-bash]    happens at [Production deploy]'s end + 2 days
@@ -98,6 +98,17 @@ end note
 [bugs] -> [Production deploy]
 [fe] -> [hw]
 [hw] -> [Release tag]
+
+' --- Reference-Forms-Demos an Demo-Anchor hängen (Soft-Arrows, kein Datums-Shift) ---
+[Demo anchor] -> [Kick-off]
+[Demo anchor] -> [spike0]
+[Demo anchor] -> [spike10]
+[Demo anchor] -> [wrap]
+[Demo anchor] -> [Audit deadline]
+[Demo anchor] -> [Compliance review]
+[Demo anchor] -> [Parallel A]
+[Demo anchor] -> [Parallel B]
+[Demo anchor] -> [Side note]
 
 ' --- Status modifiers ---
 [workshop] is 100% completed

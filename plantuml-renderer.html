@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.40</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.41</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -851,6 +851,11 @@ function computeCriticalPath(rawItems) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
       addEdge(it.afterTask, it.name, true, it.afterWhat === 'start');
     }
+    // End-Anchor (PR #18) ist auch eine echte Constraint — Sync-with-api u. ä. werden
+    // sonst als isolated gemeldet trotz Constraint.
+    if (it.type === 'task' && it.endAfterTask) {
+      addEdge(it.endAfterTask, it.name, true, it.endAfterWhat === 'start');
+    }
     if (it.type === 'dep') {
       addEdge(it.from, it.to, false);
     }
@@ -983,8 +988,10 @@ function computeCriticalPath(rawItems) {
     for (const to of succs[from]) {
       const key = from + '→' + to;
       if (ssEdges.has(key)) continue;
+      if (!hardEdges.has(key)) continue; // Soft `->`-Arrows sind explizit kein Datums-Constraint
       const toItem = itemByName[to];
       if (toItem && (toItem.offset || 0) < 0) continue; // Backward — bewusst vor end
+      if (toItem && toItem.endAfterTask === from) continue; // End-Anchor: Nachfolger läuft parallel zum Vorgänger, endet gemeinsam
       if (nodes[from].end > nodes[to].start) {
         planConflicts.push({
           from, to,
@@ -1849,16 +1856,33 @@ function processInput(text) {
         });
       }
     }
-    // Lint: kalendarischer Offset bei aktiven closed-Direktiven (Spec-strict, aber leicht
-    // zu übersehen) — Hinweis auf `working days` für reine Arbeitstag-Verschiebung.
+    // Lint: kalendarischer Offset bei aktiven closed-Direktiven — Hinweis auf `working days`
+    // nur, wenn der Offset-Zeitraum tatsächlich einen closed-Tag enthält. Reiner Werktags-
+    // Offset (z. B. Mo→Mi mit aktiven sat/sun closed, aber kein closed-Tag im Mo→Mi-Bereich)
+    // ist Calendar und Working semantisch identisch → keine Warnung.
     if (nextParsed.closedDates.size || nextParsed.closedWeekdays.size) {
+      const taskByName = {};
+      for (const it of nextParsed.rawItems) if (it.name) taskByName[it.name] = it;
       for (const it of nextParsed.rawItems) {
-        if (it.type === 'task' && it.afterTask && (it.offset || 0) > 0 && !it.offsetWorkDays) {
-          warnings.push({
-            lineNum: it.sourceLine || 0, raw: '',
-            reason: `'[${it.name}]': Offset von ${it.offset} Tagen ist kalendarisch (PlantUML-Spec). Für Arbeitstage stattdessen 'starts ${it.offset} working days after …' verwenden.`,
-          });
+        if (it.type !== 'task' || !it.afterTask || (it.offset || 0) <= 0 || it.offsetWorkDays) continue;
+        const dep = taskByName[it.afterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) continue;
+        let hasClosed = false;
+        for (let i = 1; i <= it.offset; i++) {
+          const day = addDays(depRef, i);
+          const iso = dateToISO(day);
+          const dow = day.getDay();
+          const overrideOpen = nextParsed.openOverrides && nextParsed.openOverrides.has(iso);
+          if (!overrideOpen && (nextParsed.closedWeekdays.has(dow) || nextParsed.closedDates.has(iso))) {
+            hasClosed = true; break;
+          }
         }
+        if (!hasClosed) continue;
+        warnings.push({
+          lineNum: it.sourceLine || 0, raw: '',
+          reason: `'[${it.name}]': Offset von ${it.offset} Tagen überspannt closed-Tage (PlantUML-Spec: Calendar-Offset). Für Arbeitstage stattdessen 'starts ${it.offset} working days after …' verwenden.`,
+        });
       }
     }
     const win = autoWindow(nextParsed.rawItems);
