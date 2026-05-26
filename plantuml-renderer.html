@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.37</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.38</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -908,8 +908,14 @@ function computeCriticalPath(rawItems) {
     return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
   }
 
-  let projectEnd = EF[names[0]];
-  for (const n of names) if (EF[n] > projectEnd) projectEnd = EF[n];
+  // projectEnd = spätestes EF unter den VERBUNDENEN Nodes (afterTask/dep). Wenn isolierte
+  // Tasks mitzählen würden, würde ihr spätes Datum die Chain mit Slack > 0 versehen und
+  // den kritischen Pfad rechnerisch eliminieren. Fallback auf alle Nodes, wenn nichts
+  // verbunden ist.
+  const peScope = [...names].filter(n => explicitlyConnected.has(n));
+  const peSource = peScope.length > 0 ? peScope : names;
+  let projectEnd = EF[peSource[0]];
+  for (const n of peSource) if (EF[n] > projectEnd) projectEnd = EF[n];
   // Lag pro Edge in Kalendertagen. Nur hard edges (afterTask) verschieben
   // den Nachfolger tatsächlich; soft edges (dep-Pfeile, implizit-temporal)
   // gelten als FS mit lag 0 — der Nachfolger reagiert nicht auf eine
@@ -932,21 +938,20 @@ function computeCriticalPath(rawItems) {
   const LF = {}, LS = {};
   for (let i = topo.length - 1; i >= 0; i--) {
     const n = topo[i];
-    if (succs[n].size === 0) {
-      LF[n] = projectEnd;
-    } else {
-      // LF[n] = min(LS[s] − lag(n,s)). Edge-Typ entscheidet:
-      //   hard (afterTask) → lag = realer Plan-Gap (Vorgänger zieht Nachfolger mit)
-      //   soft (dep, implicit) → lag = 0 (Nachfolger hat eigene Anker, Vorgänger
-      //   hat freien Puffer bis LS[s])
-      let minVal = Infinity;
-      for (const s of succs[n]) {
-        const lag = edgeLag[n + '→' + s] || 0;
-        const val = LS[s] - lag;
-        if (val < minVal) minVal = val;
-      }
-      LF[n] = minVal;
+    // LF[n] = min(LS[s] − lag(n,s)) **nur über hard edges**. Soft edges (dep, implicit-
+    // temporal) verschieben den Vorgänger nicht, sind nur visuelle Reihenfolge — wenn
+    // ein Task nur soft successors hat (z. B. soft edge zu einem isolated Task), bekommt
+    // er den vollen Puffer bis projectEnd. Sonst hätten soft edges zu isolated Tasks
+    // die CP-Slack-Berechnung der hard chain zerstört.
+    let minVal = Infinity;
+    for (const s of succs[n]) {
+      const key = n + '→' + s;
+      if (!hardEdges.has(key)) continue;
+      const lag = edgeLag[key] || 0;
+      const val = LS[s] - lag;
+      if (val < minVal) minVal = val;
     }
+    LF[n] = minVal === Infinity ? projectEnd : minVal;
     LS[n] = LF[n] - dur[n];
   }
 
