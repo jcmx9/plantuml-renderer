@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.42</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.43</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1637,7 +1637,12 @@ function autoZoom(wStart, wEnd, items) {
   const w = document.getElementById('svg-wrap').clientWidth || 900;
   const days = daysBetween(wStart, wEnd);
   const labelW = effectiveLabelW(items || []);
-  return Math.min(200, Math.max(0.5, (w - labelW - 40) / days));
+  // Note-Spalte einbeziehen — sonst landet sie außerhalb des sichtbaren Bereichs (Bug bis v26.5.42).
+  const hasNotes = (items || []).some(i => i && i.note);
+  const showNotesEl = document.getElementById('chk-notes');
+  const showNotes = showNotesEl ? showNotesEl.checked : true;
+  const noteW = (showNotes && hasNotes) ? NOTE_W : 0;
+  return Math.min(200, Math.max(0.5, (w - labelW - noteW - 40) / days));
 }
 
 function applyFit() {
