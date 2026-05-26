@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.29** (2026-05-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.30** (2026-05-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -121,7 +121,8 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `[Name] starts at [Other]'s end and lasts 3 days`           | Relative Abhängigkeit auf das Ende von `[Other]`.  |
 | `[Name] starts at [Other]'s end + 2 days and lasts 5 days`  | Mit Offset (`+ N days/weeks`).                     |
 | `[Name] starts at [Other]'s start and lasts 4 days`         | Beginnt zeitgleich mit `[Other]`.                  |
-| `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative Schreibweise mit `N days/weeks after`. |
+| `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative Schreibweise mit `N days/weeks after`. Offset **kalendarisch** (PlantUML-Spec). |
+| `[Name] starts 3 working days after [Other]'s end and lasts 2 days` | Wie zuvor, aber Offset zählt nur Arbeitstage (überspringt closed-Tage). |
 | `[Name] starts at [Other]'s end and ends 2026-04-30`        | Mischung relativ-/absolut-Ende.                    |
 | `[Name] starts 1 day before [Other]'s start`                | Backward-Constraint (relativer Start vor Pivot).   |
 | `[Name] starts 2 days before [Other]'s end and lasts 5 days` | Backward + Dauer.                                  |
