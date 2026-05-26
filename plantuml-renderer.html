@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.43</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.44</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1194,23 +1194,55 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
   const itemPreds = {}, itemSuccs = {}, itemLabels = {};
   for (const it of items) {
     if (it.type === 'task' || it.type === 'milestone') {
-      itemPreds[it.name] = new Set();
-      itemSuccs[it.name] = new Set();
+      itemPreds[it.name] = new Map();
+      itemSuccs[it.name] = new Map();
       itemLabels[it.name] = it.label || it.name;
     }
   }
+  // Edge-Relation als kurzer Suffix für den Tooltip — Offset, working/calendar, SS/FS,
+  // Backward, End-Anchor werden sichtbar.
+  function edgeRelation(it, anchor /* 'after' | 'endAfter' */) {
+    const afterWhat = anchor === 'after' ? it.afterWhat : it.endAfterWhat;
+    const offset = anchor === 'after' ? (it.offset || 0) : (it.endOffset || 0);
+    const workingDays = anchor === 'after' ? !!it.offsetWorkDays : false; // endOffset hat aktuell keine working-Variante
+    const parts = [];
+    if (anchor === 'endAfter') {
+      parts.push(`ends at ${afterWhat === 'start' ? 'start' : 'end'}`);
+    } else if (afterWhat === 'start') {
+      parts.push('starts at start');
+    }
+    if (offset !== 0) {
+      const sign = offset > 0 ? '+' : '−';
+      const unit = workingDays ? ` working day${Math.abs(offset) === 1 ? '' : 's'}` : ` day${Math.abs(offset) === 1 ? '' : 's'}`;
+      parts.push(`${sign} ${Math.abs(offset)}${unit}`);
+    }
+    return parts.length ? ` (${parts.join(', ')})` : '';
+  }
   for (const it of items) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask && itemPreds[it.name] && itemSuccs[it.afterTask]) {
-      itemPreds[it.name].add(it.afterTask);
-      itemSuccs[it.afterTask].add(it.name);
+      const rel = edgeRelation(it, 'after');
+      itemPreds[it.name].set(it.afterTask, rel);
+      itemSuccs[it.afterTask].set(it.name, rel);
+    }
+    if (it.type === 'task' && it.endAfterTask && itemPreds[it.name] && itemSuccs[it.endAfterTask]) {
+      const rel = edgeRelation(it, 'endAfter');
+      // Wenn schon afterTask edge auf den gleichen Vorgänger existiert: merge in einer Klammer
+      const merge = (existing, add) => {
+        if (!existing) return add;
+        if (!add) return existing;
+        return existing.slice(0, -1) + ', ' + add.slice(2, -1) + ')';
+      };
+      itemPreds[it.name].set(it.endAfterTask, merge(itemPreds[it.name].get(it.endAfterTask), rel));
+      itemSuccs[it.endAfterTask].set(it.name, merge(itemSuccs[it.endAfterTask].get(it.name), rel));
     }
     if (it.type === 'dep' && itemPreds[it.to] && itemSuccs[it.from]) {
-      itemPreds[it.to].add(it.from);
-      itemSuccs[it.from].add(it.to);
+      // dep-Pfeil ist soft edge ohne Offset — keine relation-Info
+      if (!itemPreds[it.to].has(it.from)) itemPreds[it.to].set(it.from, '');
+      if (!itemSuccs[it.from].has(it.to)) itemSuccs[it.from].set(it.to, '');
     }
   }
   // Separator `|` für die data-Attribute, weil Labels Kommas enthalten dürfen.
-  const namesToLabels = nameSet => [...nameSet].map(n => itemLabels[n] || n).join('|');
+  const namesToLabels = nameMap => [...nameMap.entries()].map(([n, rel]) => (itemLabels[n] || n) + rel).join('|');
 
   const totalDays = daysBetween(wStart, wEnd);
   const tlW = totalDays * ppd;
