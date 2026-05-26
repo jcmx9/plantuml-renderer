@@ -6,6 +6,10 @@ Project starts 2026-05-18
 
 saturday are closed
 sunday are closed
+2026-05-25 is closed
+2026-06-04 is closed
+2026-06-22 to 2026-06-24 are closed
+2026-06-23 is open
 
 /' Block comment:
    This example exercises the full subset of PlantUML Gantt syntax
@@ -34,7 +38,7 @@ end note
 [doc] pauses on monday
 
 -- QA & Release --
-[QA sweep]     as [qa]     starts 1 days after [fe]'s end and lasts 3 days
+[QA sweep]     as [qa]     starts 1 working day after [fe]'s end and lasts 3 days
 [Bug buffer]   as [bugs]   starts at [qa]'s end and lasts 2 days then [Production deploy] lasts 1 days
 [Release tag]                happens at [Production deploy]'s end
 [Post-release monitoring] as [post] happens on 3 days after [Release tag]'s end
@@ -64,10 +68,20 @@ end note
 [Phase two] requires 2 days then
 [Phase three] requires 1 day
 
-' --- Milestones (absolute / pivot variants) ---
+' --- Backward constraints (starts N (working) days before) ---
+[Pre-flight check] starts 2 days before [workshop]'s start
+[Vendor handover] starts 3 working days before [spec]'s end and lasts 1 day
+[Mirror window] starts 1 day before [api]'s start and ends at [api]'s end
+
+' --- end-anchor: requires N and ends at [Y]'s end ---
+[Sync with api] requires 3 days and ends at [api]'s end
+
+' --- Milestones (absolute / pivot variants + backward) ---
 [Kick-off]    happens 2026-05-18
 [QA gate]     happens at [qa]'s start
 [Bug-bash]    happens at [Production deploy]'s end + 2 days
+[Pre-kickoff] happens on 5 days before [Kick-off]'s start
+[Heads-up]    happens on 2 working days before [workshop]'s start
 
 ' --- Visual dependency arrows (no date change) ---
 [workshop] -> [spec]

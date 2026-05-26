@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.38</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.39</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -365,7 +365,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^title\s+(.*)/i))) { title = m[1].trim(); continue; }
 
     // Project starts
-    if ((m = line.match(/^[Pp]roject\s+starts?\s+(\d{4}-\d{2}-\d{2})/))) {
+    if ((m = line.match(/^[Pp]roject\s+starts?\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})/))) {
       projectStart = parseDate(m[1]); continue;
     }
 
@@ -975,10 +975,16 @@ function computeCriticalPath(rawItems) {
   // (`afterWhat === 'start'`) sind keine Konflikte — der Nachfolger läuft dort
   // bewusst parallel.
   const planConflicts = [];
+  // Map: name → item (für offset-Check) — Backward-Constraints (`starts N days before`)
+  // setzen offset<0 und sind kein Plan-Konflikt, sondern intendiert.
+  const itemByName = {};
+  for (const it of rawItems) if (it.name) itemByName[it.name] = it;
   for (const from of names) {
     for (const to of succs[from]) {
       const key = from + '→' + to;
       if (ssEdges.has(key)) continue;
+      const toItem = itemByName[to];
+      if (toItem && (toItem.offset || 0) < 0) continue; // Backward — bewusst vor end
       if (nodes[from].end > nodes[to].start) {
         planConflicts.push({
           from, to,
