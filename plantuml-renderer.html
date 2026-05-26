@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.36</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.37</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -773,6 +773,38 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
       afterTask: i.afterTask,
       sourceLine: i.sourceLine || 0,
     }));
+    // Cycle-Detection auf den Constraint-Edges der unresolved Items (DFS).
+    // Wenn z. B. A.afterTask=B UND B.afterTask=A → expliziter Zyklus-Hinweis statt
+    // nur "2 unresolved".
+    const byName = {};
+    for (const it of items) if (it.name) byName[it.name] = it;
+    const visited = new Set();
+    const inStack = new Set();
+    let cyclePath = null;
+    function dfs(name, path) {
+      if (cyclePath) return;
+      if (inStack.has(name)) {
+        const idx = path.indexOf(name);
+        cyclePath = path.slice(idx).concat([name]);
+        return;
+      }
+      if (visited.has(name)) return;
+      visited.add(name);
+      inStack.add(name);
+      const it = byName[name];
+      if (it) {
+        const edges = [];
+        if (it.afterTask) edges.push(it.afterTask);
+        if (it.endAfterTask) edges.push(it.endAfterTask);
+        for (const next of edges) dfs(next, [...path, name]);
+      }
+      inStack.delete(name);
+    }
+    for (const u of unresolved) {
+      dfs(u.name, []);
+      if (cyclePath) break;
+    }
+    if (cyclePath) items._unresolvedCycle = cyclePath;
   }
   return items;
 }
@@ -1775,6 +1807,12 @@ function processInput(text) {
           reason: `Syntaxfehler in Task '[${it.name}]'`,
         });
       }
+    }
+    if (nextParsed.rawItems._unresolvedCycle?.length) {
+      warnings.push({
+        lineNum: 0, raw: '',
+        reason: `Zyklus im Abhängigkeitsgraph (unresolved): ${nextParsed.rawItems._unresolvedCycle.map(n => `[${n}]`).join(' → ')}`,
+      });
     }
     if (nextParsed.rawItems._unresolvedDetails?.length) {
       for (const d of nextParsed.rawItems._unresolvedDetails) {
