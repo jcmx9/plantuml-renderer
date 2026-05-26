@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.27** (2026-05-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.28** (2026-05-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -123,6 +123,10 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `[Name] starts at [Other]'s start and lasts 4 days`         | Beginnt zeitgleich mit `[Other]`.                  |
 | `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative Schreibweise mit `N days/weeks after`. |
 | `[Name] starts at [Other]'s end and ends 2026-04-30`        | Mischung relativ-/absolut-Ende.                    |
+| `[Name] starts 1 day before [Other]'s start`                | Backward-Constraint (relativer Start vor Pivot).   |
+| `[Name] starts 2 days before [Other]'s end and lasts 5 days` | Backward + Dauer.                                  |
+| `[Name] requires 5 days and ends at [Other]'s end`          | Dauer + End-Anker (Start rückwärts berechnet).     |
+| `[Name] starts 1 day before [Y]'s start and ends at [Y]'s end` | Start- und End-Anker kombiniert (Doku-Beispiel). |
 
 > **Synonym:** `requires` ist überall ein 1:1-Ersatz für `lasts` (PlantUML-Doku-Standard). Beispiel: `[Name] requires 5 days` ≡ `[Name] lasts 5 days`.
 

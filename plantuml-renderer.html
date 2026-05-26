@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.27</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.28</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -214,12 +214,15 @@ function isClosedDay(date, closedDates, closedWeekdays, openOverrides) {
 
 function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides) {
   if (!closedDates.size && !closedWeekdays.size) return addDays(date, n);
-  // Schutz vor Endlosschleife bei kaputtem Input (NaN, negativ): fallback auf einfaches addDays.
-  if (!Number.isFinite(n) || n < 0) return addDays(date, n);
+  // Schutz vor Endlosschleife bei NaN: fallback auf addDays.
+  if (!Number.isFinite(n)) return addDays(date, n);
+  if (n === 0) return new Date(date);
+  // Vorwärts (n>0) UND rückwärts (n<0): step-Richtung umkehren, gleiche Skip-Logik.
   let cur = new Date(date);
-  let remaining = n;
+  const step = n > 0 ? 1 : -1;
+  let remaining = Math.abs(n);
   while (remaining > 0) {
-    cur = addDays(cur, 1);
+    cur = addDays(cur, step);
     if (!isClosedDay(cur, closedDates, closedWeekdays, openOverrides)) remaining--;
   }
   return cur;
@@ -424,6 +427,42 @@ function parsePlantUML(text) {
       push({ type: 'task', name: m[1], start: parseDate(m[2]), end: null, duration: parseDuration(m[3], m[4]), afterTask: null, note: null }); continue;
     }
 
+    // Task BACKWARD + END-ANCHOR combined: [Name] starts N days before [Y]'s start|end and ends at [Y]'s start|end
+    // Doku-Beleg (Complex example):
+    //   [Init and write tests report] starts 1 day before [Test prototype]'s start and ends at [Test prototype]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
+        endAfterTask: m[6], endAfterWhat: m[7], endOffset: 0,
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task BACKWARD + Duration: [Name] starts N days before [Y]'s start|end and lasts|requires M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
+        duration: parseDuration(m[6], m[7]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task BACKWARD only: [Name] starts N days before [Y]'s start|end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
+        duration: 1, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task DURATION + END-ANCHOR: [Name] lasts|requires N days and ends at [Y]'s start|end
+    // Doku-Beleg: [Write tests] requires 5 days and ends at [Prototype design]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        endAfterTask: m[4], endAfterWhat: m[5], endOffset: 0,
+        duration: parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
+    }
+
     // Task: [Name] lasts|requires N unit (uses projectStart)
     if ((m = line.match(/^\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
@@ -572,31 +611,47 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
       it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays, openOverrides);
   }
 
-  // Resolve dependency-based tasks (multi-pass for chains)
+  // Resolve dependency-based items (multi-pass for chains). Behandelt start-anchor (afterTask)
+  // UND end-anchor (endAfterTask) in derselben Schleife — end-anchor + duration kann Start
+  // rückwärts berechnen, was wieder andere Items beeinflusst.
   for (let pass = 0; pass < items.length + 2; pass++) {
     let dirty = false;
     for (const it of items) {
-      if (!it.afterTask) continue;
-      if (it.type === 'milestone' && it.date) continue;
-      if (it.type === 'task' && it.start) continue;
-
-      const dep = map[it.afterTask];
-      const depEnd = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
-      if (!depEnd) { dirty = true; continue; }
-
-      const s = addWorkDays(depEnd, it.offset || 0, closedDates, closedWeekdays, openOverrides);
-      if (it.type === 'milestone') {
-        it.date = s;
-      } else {
-        it.start = s;
-        if (!it.end) it.end = addWorkDays(s, it.duration || 1, closedDates, closedWeekdays, openOverrides);
+      // --- Phase 1: start-anchor (afterTask) ---
+      if (it.afterTask && !(it.type === 'milestone' && it.date) && !(it.type === 'task' && it.start)) {
+        const dep = map[it.afterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) { dirty = true; }
+        else {
+          const s = addWorkDays(depRef, it.offset || 0, closedDates, closedWeekdays, openOverrides);
+          if (it.type === 'milestone') {
+            it.date = s;
+          } else {
+            it.start = s;
+            if (!it.end && it.duration != null) it.end = addWorkDays(s, it.duration, closedDates, closedWeekdays, openOverrides);
+          }
+        }
+      }
+      // --- Phase 2: end-anchor (endAfterTask) ---
+      if (it.type === 'task' && it.endAfterTask && !it.end) {
+        const dep = map[it.endAfterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.endAfterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) { dirty = true; }
+        else {
+          it.end = addWorkDays(depRef, it.endOffset || 0, closedDates, closedWeekdays, openOverrides);
+          // Rückwärts-Start aus Dauer wenn start noch unbekannt
+          if (!it.start && it.duration != null) {
+            it.start = addWorkDays(it.end, -it.duration, closedDates, closedWeekdays, openOverrides);
+          }
+        }
       }
     }
     if (!dirty) break;
   }
   // Detect circular or missing dependencies
   const unresolved = items.filter(it =>
-    it.afterTask && it.type !== 'dep' &&
+    it.type !== 'dep' &&
+    (it.afterTask || it.endAfterTask) &&
     (it.type === 'milestone' ? !it.date : !it.start)
   );
   if (unresolved.length > 0) {
