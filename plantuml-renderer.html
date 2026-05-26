@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.41</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.42</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -851,10 +851,12 @@ function computeCriticalPath(rawItems) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
       addEdge(it.afterTask, it.name, true, it.afterWhat === 'start');
     }
-    // End-Anchor (PR #18) ist auch eine echte Constraint — Sync-with-api u. ä. werden
-    // sonst als isolated gemeldet trotz Constraint.
+    // End-Anchor: Nachfolger.end gebunden an Vorgänger.start/end. Im CPM-Sinn ist
+    // das FF (Finish-Finish), nicht FS — würde als hard FS-Edge falsche Lag-Propagation
+    // im Backward-Pass erzeugen. Als soft edge: Nachfolger nicht als isoliert markiert,
+    // CP-Berechnung der Hard-Chain bleibt unbeeinflusst.
     if (it.type === 'task' && it.endAfterTask) {
-      addEdge(it.endAfterTask, it.name, true, it.endAfterWhat === 'start');
+      addEdge(it.endAfterTask, it.name, false);
     }
     if (it.type === 'dep') {
       addEdge(it.from, it.to, false);
@@ -913,11 +915,16 @@ function computeCriticalPath(rawItems) {
     return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
   }
 
-  // projectEnd = spätestes EF unter den VERBUNDENEN Nodes (afterTask/dep). Wenn isolierte
-  // Tasks mitzählen würden, würde ihr spätes Datum die Chain mit Slack > 0 versehen und
-  // den kritischen Pfad rechnerisch eliminieren. Fallback auf alle Nodes, wenn nichts
-  // verbunden ist.
-  const peScope = [...names].filter(n => explicitlyConnected.has(n));
+  // projectEnd = spätestes EF unter den HARD-EDGE-verbundenen Nodes (afterTask).
+  // Soft-only-verbundene Items (dep-Pfeile, End-Anchor, implicit-temporal) sollen
+  // projectEnd NICHT treiben — sonst zieht ein isolated-aber-soft-verbundener Task
+  // mit spätem Datum die Slack der echten Hard-Chain ins Negative.
+  const hardConnected = new Set();
+  for (const key of hardEdges) {
+    const [hcFrom, hcTo] = key.split('→');
+    hardConnected.add(hcFrom); hardConnected.add(hcTo);
+  }
+  const peScope = [...names].filter(n => hardConnected.has(n));
   const peSource = peScope.length > 0 ? peScope : names;
   let projectEnd = EF[peSource[0]];
   for (const n of peSource) if (EF[n] > projectEnd) projectEnd = EF[n];
