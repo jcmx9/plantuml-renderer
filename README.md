@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.30** (2026-05-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.31** (2026-05-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -116,6 +116,8 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `[Name] starts 2026-01-01 and ends 2026-01-10`              | Absolute Start- und End-Daten.                     |
 | `[Name] starts 2026-01-01 and lasts 5 days`                 | Absoluter Start + Dauer (Arbeitstage).             |
 | `[Name] starts 2026-01-01 and lasts 2 weeks`                | Dauer in Wochen (= 14 Tage).                       |
+| `[Name] requires 1 week and 4 days`                         | Compound-Duration (= 11 Tage; PlantUML-Doku-Standard). |
+| `[A] requires 5 days then [B] requires 3 days`              | Single-Line-Chaining: zwei Tasks in einer Zeile.   |
 | `[Name] lasts 5 days`                                       | Implizit ab `Project starts`.                      |
 | `then [Name] lasts 3 days`                                  | Beginnt direkt nach dem zuletzt definierten Task.  |
 | `[Name] starts at [Other]'s end and lasts 3 days`           | Relative Abhängigkeit auf das Ende von `[Other]`.  |

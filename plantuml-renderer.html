@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.30</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.31</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -252,7 +252,21 @@ function dateToISO(d) {
 function parsePlantUML(text) {
   // Block-Kommentar /'…'/ vor dem Zeilen-Split entfernen, damit auch
   // mehrzeilige Kommentare zuverlässig verschwinden. Non-greedy.
-  const cleaned = text.replace(/\/'[\s\S]*?'\//g, '');
+  let cleaned = text.replace(/\/'[\s\S]*?'\//g, '');
+
+  // Compound-Duration: `N weeks and M days` → `(N*7 + M) days` (Doku-belegt:
+  // `[Task] requires 1 week and 4 days`). Vor allem anderen ersetzen, damit alle
+  // bestehenden duration-Patterns weiter mit ihrer einfachen `N (days|weeks)`-Form matchen.
+  cleaned = cleaned.replace(
+    /(\d+)\s*(weeks?)\s+and\s+(\d+)\s*(days?)/gi,
+    (_m, n1, _u1, n2) => `${parseInt(n1, 10) * 7 + parseInt(n2, 10)} days`
+  );
+
+  // Single-Line then-Chaining: `[A] requires 5 days then [B] requires 3 days` → zwei Zeilen
+  // (Doku-belegt). Splittet vor jedem `then […]` an Whitespace zu Newline. Greift nicht in
+  // String-Literalen, weil `.puml` keine String-Literale mit Spaces+then+`[` enthält.
+  cleaned = cleaned.replace(/\s+(?=then\s+\[)/g, '\n');
+
   const lines = cleaned.split('\n').map(l => l.trim());
   const rawItems = [];
   const parseWarnings = [];
