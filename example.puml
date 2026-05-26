@@ -1,4 +1,4 @@
-@startgantt
+@startgantt name
 title Auth Refactor Sprint — Q2 2026
 
 ' --- Project frame ---
@@ -85,6 +85,7 @@ end note
 
 ' --- Visual dependency arrows (no date change) ---
 [workshop] -> [spec]
+[workshop] -> [vend]
 [spec] -> [api]
 [spec] -> [middle]
 [api] -> [fe]
@@ -95,6 +96,8 @@ end note
 [mig] -> [qa]
 [qa] -> [bugs]
 [bugs] -> [Production deploy]
+[fe] -> [hw]
+[hw] -> [Release tag]
 
 ' --- Status modifiers ---
 [workshop] is 100% completed
