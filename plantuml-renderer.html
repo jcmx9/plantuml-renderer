@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.28</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.29</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -206,14 +206,18 @@ function parseDuration(num, unit) {
   return unit.toLowerCase().startsWith('week') ? parseInt(num, 10) * 7 : parseInt(num, 10);
 }
 
-function isClosedDay(date, closedDates, closedWeekdays, openOverrides) {
+function isClosedDay(date, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays) {
   const iso = dateToISO(date);
   if (openOverrides && openOverrides.has(iso)) return false;
-  return closedWeekdays.has(date.getDay()) || closedDates.has(iso);
+  if (closedWeekdays.has(date.getDay()) || closedDates.has(iso)) return true;
+  if (itemPauses && itemPauses.has(iso)) return true;
+  if (itemPauseWeekdays && itemPauseWeekdays.has(date.getDay())) return true;
+  return false;
 }
 
-function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides) {
-  if (!closedDates.size && !closedWeekdays.size) return addDays(date, n);
+function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays) {
+  const hasPauses = (itemPauses && itemPauses.size) || (itemPauseWeekdays && itemPauseWeekdays.size);
+  if (!closedDates.size && !closedWeekdays.size && !hasPauses) return addDays(date, n);
   // Schutz vor Endlosschleife bei NaN: fallback auf addDays.
   if (!Number.isFinite(n)) return addDays(date, n);
   if (n === 0) return new Date(date);
@@ -223,7 +227,7 @@ function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides) {
   let remaining = Math.abs(n);
   while (remaining > 0) {
     cur = addDays(cur, step);
-    if (!isClosedDay(cur, closedDates, closedWeekdays, openOverrides)) remaining--;
+    if (!isClosedDay(cur, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays)) remaining--;
   }
   return cur;
 }
@@ -371,6 +375,22 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+is\s+(\d+)%\s+completed/i))) {
       const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
       if (t) t.pct = Math.min(100, Math.max(0, +m[2])) / 100;
+      continue;
+    }
+
+    // Pause modifier (date): [Task] pauses on 2026-06-15
+    // Doku-Beleg: [Implementation] pauses on 2018/12/13
+    if ((m = line.match(/^\[([^\]]+)\]\s+pauses\s+on\s+(\d{4}-\d{2}-\d{2})/i))) {
+      const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
+      if (t) { if (!t.pauses) t.pauses = new Set(); t.pauses.add(m[2]); }
+      continue;
+    }
+
+    // Pause modifier (weekday): [Task] pauses on monday
+    // Doku-Beleg: [Implementation] pauses on monday
+    if ((m = line.match(/^\[([^\]]+)\]\s+pauses\s+on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i))) {
+      const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
+      if (t) { if (!t.pauseWeekdays) t.pauseWeekdays = new Set(); t.pauseWeekdays.add(WEEKDAY_MAP[m[2].toLowerCase()]); }
       continue;
     }
 
@@ -608,7 +628,7 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
   // Resolve absolute-start tasks that need end computed from duration
   for (const it of items) {
     if (it.type === 'task' && it.start && !it.end && it.duration != null)
-      it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays, openOverrides);
+      it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays, openOverrides, it.pauses, it.pauseWeekdays);
   }
 
   // Resolve dependency-based items (multi-pass for chains). Behandelt start-anchor (afterTask)
@@ -623,12 +643,15 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
         const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
         if (!depRef) { dirty = true; }
         else {
+          // Offset = Lücke zwischen Vorgänger und Task — globale closed-Direktiven gelten,
+          // item-Pausen NICHT (die Pause gehört zum Task, nicht zur Lücke davor).
           const s = addWorkDays(depRef, it.offset || 0, closedDates, closedWeekdays, openOverrides);
           if (it.type === 'milestone') {
             it.date = s;
           } else {
             it.start = s;
-            if (!it.end && it.duration != null) it.end = addWorkDays(s, it.duration, closedDates, closedWeekdays, openOverrides);
+            // Bar-Länge: item-Pausen relevant.
+            if (!it.end && it.duration != null) it.end = addWorkDays(s, it.duration, closedDates, closedWeekdays, openOverrides, it.pauses, it.pauseWeekdays);
           }
         }
       }
@@ -638,10 +661,11 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
         const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.endAfterWhat === 'start' ? dep.start : dep.end)) : null;
         if (!depRef) { dirty = true; }
         else {
+          // End-Offset analog zu Start-Offset: nur globale closed-Direktiven, keine item-Pausen.
           it.end = addWorkDays(depRef, it.endOffset || 0, closedDates, closedWeekdays, openOverrides);
-          // Rückwärts-Start aus Dauer wenn start noch unbekannt
+          // Rückwärts-Start aus Dauer wenn start noch unbekannt — Bar-Länge, item-Pausen relevant.
           if (!it.start && it.duration != null) {
-            it.start = addWorkDays(it.end, -it.duration, closedDates, closedWeekdays, openOverrides);
+            it.start = addWorkDays(it.end, -it.duration, closedDates, closedWeekdays, openOverrides, it.pauses, it.pauseWeekdays);
           }
         }
       }
