@@ -15,6 +15,7 @@ sunday are closed
 -- Discovery --
 [Stakeholder workshop] as [workshop] lasts 2 days
 [Tech spec] as [spec] starts at [workshop]'s end and lasts 4 days
+[Vendor briefing] as [vend] starts 2026-05-21 and lasts 1 week
 note bottom
 Spec review with architects.
 Confirm API contract before implementation starts.
@@ -25,6 +26,13 @@ end note
 [Auth middleware]  as [middle] starts at [spec]'s end and lasts 5 days
 [Frontend wiring]  as [fe]     starts at [api]'s end and lasts 6 days
 [Migration script] as [mig]    starts at [api]'s start + 2 days and lasts 4 days
+[Security audit]   as [sec]    starts at [middle]'s end + 1 day and lasts 3 days
+[Hardening window] as [hw]     starts 2026-06-22 and ends 2026-06-26
+[Doc draft]        as [doc]    starts at [api]'s end and ends 2026-07-03
+
+' --- pauses on (task gets paused on specific date and/or weekday) ---
+[doc] pauses on 2026-06-25
+[doc] pauses on monday
 
 -- QA & Release --
 [QA sweep]     as [qa]     starts 1 days after [fe]'s end and lasts 3 days
@@ -33,12 +41,18 @@ then [Production deploy] lasts 1 days
 [Release tag]                happens at [Production deploy]'s end
 [Post-release monitoring] as [post] happens on 3 days after [Release tag]'s end
 
+' --- Milestones (absolute / pivot variants) ---
+[Kick-off]    happens 2026-05-18
+[QA gate]     happens at [qa]'s start
+[Bug-bash]    happens at [Production deploy]'s end + 2 days
+
 ' --- Visual dependency arrows (no date change) ---
 [workshop] -> [spec]
 [spec] -> [api]
 [spec] -> [middle]
 [api] -> [fe]
 [api] -> [mig]
+[middle] -> [sec]
 [fe] -> [qa]
 [middle] -> [qa]
 [mig] -> [qa]
@@ -57,6 +71,7 @@ then [Production deploy] lasts 1 days
 [Release tag] is colored in #c0392b/white
 [post] is colored in #2ecc71/white
 [workshop] is colored in #95a5a6/white
+[hw] is colored in #f39c12/white
 
 ' --- Hyperlinks ---
 [spec] links to [[https://github.com/jcmx9/plantuml-renderer]]

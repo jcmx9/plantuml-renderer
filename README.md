@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.28** (2026-05-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.29** (2026-05-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -155,6 +155,8 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `[A] is colored in #2980b9/white`      | Fill plus Textfarbe (`/` als Trenner).                                                                                                  |
 | `[A] is 75% completed`                 | Progress-Overlay (halbtransparenter dunkler Block auf der Bar).                                                                         |
 | `[A] links to [[https://example.com]]` | Hyperlink auf Bar/Milestone und Label-Spalten-Text. Öffnet im neuen Tab. **Doppelte** eckige Klammern um die URL (PlantUML-Konvention). |
+| `[A] pauses on 2026-06-15`             | Pause-Tag (PlantUML-Direktive). Task-Ende verschiebt sich um die Pause-Tage nach hinten. |
+| `[A] pauses on monday`                 | Pause-Wochentag — alle Vorkommen werden im Task-Zeitraum übersprungen. |
 
 ### Strukturierung
 
