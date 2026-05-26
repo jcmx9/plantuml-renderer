@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.35</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.36</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -277,10 +277,11 @@ function parsePlantUML(text) {
   // D+n Notation: `[T] starts D+5` / `[T] ends D+15` → konkretes Datum relativ zu
   // `Project starts`. Doku-Beleg: `[Prototype design] starts D+0`, `… ends D+14`.
   // Wir extrahieren `Project starts DATE` aus dem Text (egal wo es steht) und ersetzen
-  // dann alle `D+N` Vorkommen. Wenn `Project starts` fehlt, bleibt `D+N` unersetzt →
-  // Parser-Warning. Im Generic-Mode (1900) müsste das hier ergänzt werden, aber Generic-
-  // Mode wird ohnehin von `lasts`-without-projectStart erzeugt, nicht von `D+n`-Tasks.
+  // dann alle `D+N` Vorkommen. Wenn `Project starts` fehlt UND `D+N`-Notation verwendet
+  // wird, geben wir eine dedizierte Warnung aus (nicht nur generic "Keyword ohne Muster").
+  const dPlusUsages = (cleaned.match(/\bD\+\d+\b/g) || []).length;
   const psMatch = cleaned.match(/Project\s+starts\s+(\d{4}-\d{2}-\d{2})/i);
+  const psMissingForDPlus = dPlusUsages > 0 && !psMatch;
   if (psMatch) {
     const psAnchor = parseDate(psMatch[1]);
     if (psAnchor) {
@@ -291,6 +292,12 @@ function parsePlantUML(text) {
   const lines = cleaned.split('\n').map(l => l.trim());
   const rawItems = [];
   const parseWarnings = [];
+  if (psMissingForDPlus) {
+    parseWarnings.push({
+      lineNum: 0, raw: '',
+      reason: `D+n-Notation verwendet (${dPlusUsages} Vorkommen), aber 'Project starts YYYY-MM-DD' fehlt — Anker für D+0 ist nicht definiert.`,
+    });
+  }
   let title = '';
   let projectStart = null;
   const closedDates    = new Set();
