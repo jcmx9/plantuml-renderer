@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.32** (2026-05-26) · German version: [README.md](README.md)
+> Current version: **v26.5.33** (2026-05-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -157,6 +157,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[A] is colored in #2980b9/white` | Fill plus text colour (`/` as separator). |
 | `[A] is 75% completed` | Progress overlay (semi-transparent dark block on the bar). |
 | `[A] links to [[https://example.com]]` | Hyperlink on the bar/milestone and the label-column text. Opens in a new tab. **Double** square brackets around the URL (PlantUML convention). |
+| `[B] displays on same row as [A]` | Task/milestone B shares the row with A (no own label, own bar). |
 | `[A] pauses on 2026-06-15` | Pause day (PlantUML directive). Task end shifts later by the number of pause days inside its range. |
 | `[A] pauses on monday` | Pause weekday — every occurrence inside the task range is skipped. |
 
