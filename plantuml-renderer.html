@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.33</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.34</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -261,6 +261,13 @@ function parsePlantUML(text) {
     /(\d+)\s*(weeks?)\s+and\s+(\d+)\s*(days?)/gi,
     (_m, n1, _u1, n2) => `${parseInt(n1, 10) * 7 + parseInt(n2, 10)} days`
   );
+
+  // Multi-Line then-Succession ("Simplified task succession", Doku-belegt):
+  //   [A] requires 14 days then
+  //   [B] requires 4 days then
+  //   [C] requires 6 days
+  // → normalisiert zu einer Zeile, der nachfolgende Single-Line-Filter splittet sie wieder.
+  cleaned = cleaned.replace(/\s+then\s*\n\s*(?=\[)/g, ' then ');
 
   // Single-Line then-Chaining: `[A] requires 5 days then [B] requires 3 days` → zwei Zeilen
   // (Doku-belegt). Splittet vor jedem `then […]` an Whitespace zu Newline. Greift nicht in

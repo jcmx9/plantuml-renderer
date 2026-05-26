@@ -60,6 +60,11 @@ end note
 [Side note] happens 2026-07-05
 [Side note] displays on same row as [Audit deadline]
 
+' --- Simplified task succession: then am Zeilenende ---
+[Phase one] requires 3 days then
+[Phase two] requires 2 days then
+[Phase three] requires 1 day
+
 ' --- Milestones (absolute / pivot variants) ---
 [Kick-off]    happens 2026-05-18
 [QA gate]     happens at [qa]'s start
