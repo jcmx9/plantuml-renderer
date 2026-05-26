@@ -40,6 +40,19 @@ end note
 [Release tag]                happens at [Production deploy]'s end
 [Post-release monitoring] as [post] happens on 3 days after [Release tag]'s end
 
+-- Reference forms --
+' --- D+n relative Tagesnotation (Doku-Standard: D+0 = Project starts) ---
+[Spike T+0]    as [spike0]   starts D+0 and lasts 2 days
+[Spike T+10]   as [spike10]  starts D+10 and lasts 1 day
+[Wrap-up]      as [wrap]     ends D+50 and requires 2 days
+
+' --- ends DATE standalone und ends DATE + requires ---
+[Audit deadline] ends 2026-07-15
+[Compliance review] ends 2026-07-20 and requires 4 days
+
+' --- occurs from [M1] to [M2] (Task-Span zwischen Milestones) ---
+[Project lifespan] occurs from [Kick-off] to [Release tag]
+
 ' --- Milestones (absolute / pivot variants) ---
 [Kick-off]    happens 2026-05-18
 [QA gate]     happens at [qa]'s start

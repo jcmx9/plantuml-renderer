@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.31</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.32</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -266,6 +266,20 @@ function parsePlantUML(text) {
   // (Doku-belegt). Splittet vor jedem `then […]` an Whitespace zu Newline. Greift nicht in
   // String-Literalen, weil `.puml` keine String-Literale mit Spaces+then+`[` enthält.
   cleaned = cleaned.replace(/\s+(?=then\s+\[)/g, '\n');
+
+  // D+n Notation: `[T] starts D+5` / `[T] ends D+15` → konkretes Datum relativ zu
+  // `Project starts`. Doku-Beleg: `[Prototype design] starts D+0`, `… ends D+14`.
+  // Wir extrahieren `Project starts DATE` aus dem Text (egal wo es steht) und ersetzen
+  // dann alle `D+N` Vorkommen. Wenn `Project starts` fehlt, bleibt `D+N` unersetzt →
+  // Parser-Warning. Im Generic-Mode (1900) müsste das hier ergänzt werden, aber Generic-
+  // Mode wird ohnehin von `lasts`-without-projectStart erzeugt, nicht von `D+n`-Tasks.
+  const psMatch = cleaned.match(/Project\s+starts\s+(\d{4}-\d{2}-\d{2})/i);
+  if (psMatch) {
+    const psAnchor = parseDate(psMatch[1]);
+    if (psAnchor) {
+      cleaned = cleaned.replace(/\bD\+(\d+)\b/g, (_m, n) => dateToISO(addDays(psAnchor, parseInt(n, 10))));
+    }
+  }
 
   const lines = cleaned.split('\n').map(l => l.trim());
   const rawItems = [];
@@ -453,6 +467,32 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseDate(m[3]), duration: null, afterTask: null, note: null }); continue;
+    }
+
+    // Task occurs from [M1] to [M2] — Span zwischen zwei Milestones/Tasks
+    // Doku-Beleg: [Prototype design] occurs from [P_start] to [P_end]
+    if ((m = line.match(/^\[([^\]]+)\]\s+occurs\s+from\s+\[([^\]]+)\]\s+to\s+\[([^\]]+)\]/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0,
+        endAfterTask: m[3], endAfterWhat: 'start', endOffset: 0,
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] ends DATE and (lasts|requires) N unit
+    // (Rückwärts: End fest, Start = End − Dauer.)
+    if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+        duration: parseDuration(m[3], m[4]), afterTask: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] ends DATE  (Standalone, ohne Start-Constraint)
+    // Doku-Beleg: [Prototype design] ends 2020-07-15
+    if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s*$/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+        duration: 1, afterTask: null, note: null, sourceLine: lineNum }); continue;
     }
 
     // Task: [Name] starts DATE and lasts|requires N unit
@@ -645,6 +685,12 @@ function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set()
   for (const it of items) {
     if (it.type === 'task' && it.start && !it.end && it.duration != null)
       it.end = addWorkDays(it.start, it.duration, closedDates, closedWeekdays, openOverrides, it.pauses, it.pauseWeekdays);
+  }
+  // Resolve absolute-end tasks that need start computed from duration (Rückwärts).
+  // Tritt auf bei `[T] ends DATE and requires N`, `[T] ends DATE` standalone (duration=1).
+  for (const it of items) {
+    if (it.type === 'task' && it.end && !it.start && it.duration != null)
+      it.start = addWorkDays(it.end, -it.duration, closedDates, closedWeekdays, openOverrides, it.pauses, it.pauseWeekdays);
   }
 
   // Resolve dependency-based items (multi-pass for chains). Behandelt start-anchor (afterTask)
