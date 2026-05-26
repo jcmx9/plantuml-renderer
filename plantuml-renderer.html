@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.24</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.25</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -383,28 +383,28 @@ function parsePlantUML(text) {
       push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseDate(m[3]), duration: null, afterTask: null, note: null }); continue;
     }
 
-    // Task: [Name] starts DATE and lasts N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts DATE and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: parseDate(m[2]), end: null, duration: parseDuration(m[3], m[4]), afterTask: null, note: null }); continue;
     }
 
-    // Task: [Name] lasts N unit (uses projectStart)
-    if ((m = line.match(/^\[([^\]]+)\]\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] lasts|requires N unit (uses projectStart)
+    if ((m = line.match(/^\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: projectStart || new Date(), end: null, duration: parseDuration(m[2], m[3]), afterTask: null, note: null }); continue;
     }
 
-    // then [Task] lasts N unit (starts right after previous task)
-    if ((m = line.match(/^then\s+\[([^\]]+)\]\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // then [Task] lasts|requires N unit (starts right after previous task)
+    if ((m = line.match(/^then\s+\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       const prev = lastTaskName;
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: prev, offset: 0, duration: parseDuration(m[2], m[3]), note: null }); continue;
     }
 
-    // Task: [Name] starts N days/weeks after [Other]'s end and lasts M unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts N days/weeks after [Other]'s end and lasts|requires M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[4], offset: parseDuration(m[2], m[3]), duration: parseDuration(m[5], m[6]), note: null }); continue;
@@ -418,8 +418,8 @@ function parsePlantUML(text) {
     }
 
 
-    // Task: [Name] starts at [Other]'s start + OFFSET and lasts N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s start + OFFSET and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[2], afterWhat: 'start', offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
@@ -439,8 +439,8 @@ function parsePlantUML(text) {
         afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s start and lasts N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s start and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[2], afterWhat: 'start', offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
@@ -460,8 +460,8 @@ function parsePlantUML(text) {
         afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: null, note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s end + OFFSET and lasts N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s end + OFFSET and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
@@ -474,8 +474,8 @@ function parsePlantUML(text) {
         afterTask: m[2], offset: 0, duration: null, note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s end and lasts N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+lasts\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s end and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[2], offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
@@ -498,7 +498,7 @@ function parsePlantUML(text) {
     } else if (/\d{4}-\d{1,2}-\d{1,2}/.test(line) && !/\b\d{4}-\d{2}-\d{2}\b/.test(line)) {
       parseWarnings.push({ lineNum, raw: rawLine, reason: 'Verdächtiges Datum (YYYY-MM-DD erwartet)' });
       heuristicMatched = true;
-    } else if (/\b(starts|ends|lasts|happens)\b/i.test(line)) {
+    } else if (/\b(starts|ends|lasts|requires|happens)\b/i.test(line)) {
       parseWarnings.push({ lineNum, raw: rawLine, reason: 'Keyword ohne erkanntes Muster' });
       heuristicMatched = true;
     }
@@ -506,7 +506,7 @@ function parsePlantUML(text) {
     // als "unresolved" enden statt an den Projektanfang zurückzuspringen.
     if (heuristicMatched) {
       const nm = line.match(/^\[([^\]]+)\]/);
-      const hasKw = /\b(starts|ends|lasts|happens)\b/i.test(line);
+      const hasKw = /\b(starts|ends|lasts|requires|happens)\b/i.test(line);
       if (nm && hasKw) {
         rawItems.push({
           type: 'task', name: nm[1].trim(),

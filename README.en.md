@@ -116,6 +116,8 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative `N days/weeks after` form. |
 | `[Name] starts at [Other]'s end and ends 2026-04-30` | Relative start + absolute end. |
 
+> **Synonym:** `requires` is a 1:1 substitute for `lasts` everywhere (PlantUML doc standard). Example: `[Name] requires 5 days` ≡ `[Name] lasts 5 days`.
+
 ### Milestones
 
 | Syntax | Meaning |

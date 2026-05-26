@@ -122,6 +122,8 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 | `[Name] starts 3 days after [Other]'s end and lasts 2 days` | Alternative Schreibweise mit `N days/weeks after`. |
 | `[Name] starts at [Other]'s end and ends 2026-04-30`        | Mischung relativ-/absolut-Ende.                    |
 
+> **Synonym:** `requires` ist überall ein 1:1-Ersatz für `lasts` (PlantUML-Doku-Standard). Beispiel: `[Name] requires 5 days` ≡ `[Name] lasts 5 days`.
+
 ### Meilensteine
 
 | Syntax                                     | Bedeutung                        |
