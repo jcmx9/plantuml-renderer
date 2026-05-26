@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.24** (2026-05-25) · German version: [README.md](README.md)
+> Current version: **v26.5.26** (2026-05-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -127,6 +127,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[Done] happens at [X]'s end + 5 days` | With positive offset. |
 | `[Done] happens at [X]'s start` | At the start of a task. |
 | `[Done] happens on 3 days after [X]'s end` | Alternative offset spelling. |
+| `[Kickoff] happens on 5 days before [X]'s start` | Backward form (PlantUML doc-verified, milestones only). |
 
 ### Dependency arrows
 

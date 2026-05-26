@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.25</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.26</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -374,7 +374,13 @@ function parsePlantUML(text) {
 
     // Milestone: [Name] happens on N days/weeks after [Other]'s end
     if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end/i))) {
-      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], offset: parseDuration(m[2], m[3]), note: null }); continue;
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], offset: parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Milestone: [Name] happens on N days/weeks before [Other]'s start (PlantUML-doku-belegte Backward-Form)
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+start/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], afterWhat: 'start',
+        offset: -parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
     }
 
     // Task: [Name] starts DATE and ends DATE
