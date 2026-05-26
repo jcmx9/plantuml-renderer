@@ -53,6 +53,13 @@ end note
 ' --- occurs from [M1] to [M2] (Task-Span zwischen Milestones) ---
 [Project lifespan] occurs from [Kick-off] to [Release tag]
 
+' --- displays on same row as (Tasks/Milestones auf gleiche Y-Zeile) ---
+[Parallel A] starts 2026-06-15 and lasts 3 days
+[Parallel B] starts 2026-06-25 and lasts 2 days
+[Parallel B] displays on same row as [Parallel A]
+[Side note] happens 2026-07-05
+[Side note] displays on same row as [Audit deadline]
+
 ' --- Milestones (absolute / pivot variants) ---
 [Kick-off]    happens 2026-05-18
 [QA gate]     happens at [qa]'s start

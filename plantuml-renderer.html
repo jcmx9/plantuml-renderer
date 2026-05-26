@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.32</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.33</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -419,6 +419,14 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+pauses\s+on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i))) {
       const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
       if (t) { if (!t.pauseWeekdays) t.pauseWeekdays = new Set(); t.pauseWeekdays.add(WEEKDAY_MAP[m[2].toLowerCase()]); }
+      continue;
+    }
+
+    // Same-row modifier: [X] displays on same row as [Y]
+    // Doku-Beleg: [Test prototype] displays on same row as [Prototype design]
+    if ((m = line.match(/^\[([^\]]+)\]\s+displays\s+on\s+same\s+row\s+as\s+\[([^\]]+)\]/i))) {
+      const t = rawItems.findLast(i => i.name === m[1] || i.label === m[1]);
+      if (t) t.sameRowAs = m[2];
       continue;
     }
 
@@ -1150,11 +1158,13 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
 
   // Assign y positions (dep items are arrows only — no row)
   // Filter: items unterhalb einer collapsed Section werden ausgeblendet,
-  // der Section-Header selbst bleibt sichtbar.
+  // der Section-Header selbst bleibt sichtbar. Items mit `sameRowAs` werden
+  // aus dem vertikalen Layout ausgeschlossen und nach dem Pass als Overlay
+  // mit der Y-Position ihres Hosts (= Task auf den sie zeigen) eingefügt.
   let y = hdrH;
   let curSection = null;
   let activeCollapsed = false;
-  const rows = items.filter(item => item.type !== 'dep').filter(item => {
+  const rows = items.filter(item => item.type !== 'dep' && !item.sameRowAs).filter(item => {
     if (item.type === 'section') {
       activeCollapsed = collapsedSections.has(item.name);
       return true;
@@ -1168,6 +1178,19 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     y += h;
     return row;
   });
+  // Overlay-Pass: Items mit `sameRowAs` bekommen Y vom Host und werden als Overlay-Row
+  // an `rows` angehängt (am Ende, damit sie nach den normalen Bars gerendert werden).
+  const rowByName = {};
+  for (const r of rows) {
+    if (r.name) rowByName[r.name] = r;
+    if (r.label) rowByName[r.label] = r;
+  }
+  for (const item of items) {
+    if (item.type === 'dep' || !item.sameRowAs) continue;
+    const host = rowByName[item.sameRowAs];
+    if (!host) continue; // unresolved sameRowAs — silently ignore
+    rows.push({ ...item, y: host.y, h: host.h, barCenterY: host.barCenterY, section: host.section, isOverlay: true });
+  }
   const totalH = y;
   const totalW = labelW + tlW + noteW;
 
@@ -1270,14 +1293,17 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
 
     // Label column (right-aligned). If the item has a hyperlink (`[X] links to [[URL]]`),
     // wrap the label in an SVG <a> with target="_blank" and add an underline cue.
+    // Overlay-Rows (displays on same row as): kein eigenes Label, Host-Label bleibt.
     const displayName = r.label || r.name;
     const linkOpen  = r.link ? `<a xlink:href="${esc(r.link)}" target="_blank">` : '';
     const linkClose = r.link ? `</a>` : '';
     const linkStyle = r.link ? ' style="cursor:pointer;text-decoration:underline"' : '';
-    g.push(linkOpen);
-    g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
-           ` fill="${C.taskFgOut}" font-size="${FS}"${linkStyle}>${esc(displayName)}</text>`);
-    g.push(linkClose);
+    if (!r.isOverlay) {
+      g.push(linkOpen);
+      g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
+             ` fill="${C.taskFgOut}" font-size="${FS}"${linkStyle}>${esc(displayName)}</text>`);
+      g.push(linkClose);
+    }
 
     if (r.type === 'task') {
       if (r.parseError) {
