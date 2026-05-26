@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.33** (2026-05-26) · German version: [README.md](README.md)
+> Current version: **v26.5.34** (2026-05-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -112,6 +112,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 | `[Name] starts 2026-01-01 and lasts 2 weeks` | Duration in weeks (= 14 days). |
 | `[Name] requires 1 week and 4 days` | Compound duration (= 11 days; PlantUML doc standard). |
 | `[A] requires 5 days then [B] requires 3 days` | Single-line chaining: two tasks on one line. |
+| `[A] requires 5 days then` (with follow-up line) | Multi-line succession: trailing `then`, next line is the successor. |
 | `[Name] starts D+5 and requires 3 days` | `D+n` notation: relative to `Project starts` (D+0). |
 | `[Name] ends D+10 and requires 2 days` | `D+n` also in the `ends` context. |
 | `[Name] ends 2026-07-15` | Standalone `ends` — start derived from default duration 1. |
