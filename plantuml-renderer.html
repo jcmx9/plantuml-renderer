@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.34</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.35</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -472,10 +472,10 @@ function parsePlantUML(text) {
       push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], offset: parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
     }
 
-    // Milestone: [Name] happens on N days/weeks before [Other]'s start (PlantUML-doku-belegte Backward-Form)
-    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+start/i))) {
-      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], afterWhat: 'start',
-        offset: -parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
+    // Milestone: [Name] happens on N (working )? days/weeks before [Other]'s start (Backward-Form)
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+start/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[5], afterWhat: 'start',
+        offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3], note: null, sourceLine: lineNum }); continue;
     }
 
     // Task: [Name] starts DATE and ends DATE
@@ -516,30 +516,30 @@ function parsePlantUML(text) {
       push({ type: 'task', name: m[1], start: parseDate(m[2]), end: null, duration: parseDuration(m[3], m[4]), afterTask: null, note: null }); continue;
     }
 
-    // Task BACKWARD + END-ANCHOR combined: [Name] starts N days before [Y]'s start|end and ends at [Y]'s start|end
+    // Task BACKWARD + END-ANCHOR combined: [Name] starts N (working )? days before [Y]'s start|end and ends at [Y]'s start|end
     // Doku-Beleg (Complex example):
     //   [Init and write tests report] starts 1 day before [Test prototype]'s start and ends at [Test prototype]'s end
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
-        endAfterTask: m[6], endAfterWhat: m[7], endOffset: 0,
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        endAfterTask: m[7], endAfterWhat: m[8], endOffset: 0,
         duration: null, note: null, sourceLine: lineNum }); continue;
     }
 
-    // Task BACKWARD + Duration: [Name] starts N days before [Y]'s start|end and lasts|requires M unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task BACKWARD + Duration: [Name] starts N (working )? days before [Y]'s start|end and lasts|requires M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
-        duration: parseDuration(m[6], m[7]), note: null, sourceLine: lineNum }); continue;
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        duration: parseDuration(m[7], m[8]), note: null, sourceLine: lineNum }); continue;
     }
 
-    // Task BACKWARD only: [Name] starts N days before [Y]'s start|end
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s*(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+    // Task BACKWARD only: [Name] starts N (working )? days before [Y]'s start|end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[4], afterWhat: m[5], offset: -parseDuration(m[2], m[3]),
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
         duration: 1, note: null, sourceLine: lineNum }); continue;
     }
 
