@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.44</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.45</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -464,9 +464,10 @@ function parsePlantUML(text) {
       push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], afterWhat: 'start', offset: 0, note: null }); continue;
     }
 
-    // Milestone: [Name] happens at [Other]'s end + OFFSET
-    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)/i))) {
-      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], offset: parseDuration(m[3], m[4]), note: null }); continue;
+    // Milestone: [Name] happens at [Other]'s end + OFFSET  (oder − OFFSET)
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s*(days?|weeks?)/i))) {
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], offset: sign * parseDuration(m[4], m[5]), note: null }); continue;
     }
 
     // Milestone: [Name] happens at [Other]'s end
@@ -590,18 +591,20 @@ function parsePlantUML(text) {
     }
 
 
-    // Task: [Name] starts at [Other]'s start + OFFSET and lasts|requires N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s start + OFFSET and lasts|requires N unit  (oder − OFFSET)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*([+-])\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[2], afterWhat: 'start', offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
+        afterTask: m[2], afterWhat: 'start', offset: sign * parseDuration(m[4], m[5]), duration: parseDuration(m[6], m[7]), note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s start + OFFSET and ends DATE
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+    // Task: [Name] starts at [Other]'s start + OFFSET and ends DATE  (oder − OFFSET)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*([+-])\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[5]),
-        afterTask: m[2], afterWhat: 'start', offset: parseDuration(m[3], m[4]), duration: null, note: null }); continue;
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[6]),
+        afterTask: m[2], afterWhat: 'start', offset: sign * parseDuration(m[4], m[5]), duration: null, note: null }); continue;
     }
 
     // Task: [Name] starts at [Other]'s start and ends DATE
@@ -625,18 +628,20 @@ function parsePlantUML(text) {
         afterTask: m[2], afterWhat: 'start', offset: 0, duration: 1, note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s end + OFFSET and ends DATE
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+    // Task: [Name] starts at [Other]'s end + OFFSET and ends DATE  (oder − OFFSET)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s*(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[5]),
-        afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: null, note: null }); continue;
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[6]),
+        afterTask: m[2], offset: sign * parseDuration(m[4], m[5]), duration: null, note: null }); continue;
     }
 
-    // Task: [Name] starts at [Other]'s end + OFFSET and lasts|requires N unit
-    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*\+\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+    // Task: [Name] starts at [Other]'s end + OFFSET and lasts|requires N unit  (oder − OFFSET)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s*(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[2], offset: parseDuration(m[3], m[4]), duration: parseDuration(m[5], m[6]), note: null }); continue;
+        afterTask: m[2], offset: sign * parseDuration(m[4], m[5]), duration: parseDuration(m[6], m[7]), note: null }); continue;
     }
 
     // Task: [Name] starts at [Other]'s end and ends DATE
