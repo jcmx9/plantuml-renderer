@@ -24,7 +24,7 @@ Confirm API contract before implementation starts.
 end note
 
 -- Implementation [2] --
-[API endpoints]    as [api]    starts at [spec]'s end and lasts 7 days
+[API endpoints]    as [api]    starts at [spec]'s end - 2 days and lasts 21 days
 [Auth middleware]  as [middle] starts at [spec]'s end and lasts 5 days
 [Frontend wiring]  as [fe]     starts at [api]'s end and lasts 6 days
 [Migration script] as [mig]    starts at [api]'s start + 2 days and lasts 4 days
@@ -99,7 +99,7 @@ end note
 [fe] -> [hw]
 [hw] -> [Release tag]
 
-' --- Reference-Forms-Demos an Demo-Anchor hängen (Soft-Arrows, kein Datums-Shift) ---
+' --- Reference-Forms-Demos an Demo-Anchor hängen (soft arrows, kein Datums-Shift) ---
 [Demo anchor] -> [Kick-off]
 [Demo anchor] -> [spike0]
 [Demo anchor] -> [spike10]
