@@ -137,7 +137,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.62</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.63</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1897,6 +1897,7 @@ function setDateInputs(s, e) {
 
 function render() {
   if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
+  if (window.__resetDepHover) window.__resetDepHover();
   let svg;
   try {
     const showMS    = document.getElementById('chk-milestones').checked;
@@ -2412,12 +2413,36 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('svg-wrap').addEventListener('click', e => {
+    // 1. Section-Header → Collapse-Toggle
     const sec = e.target.closest('[data-section-name]');
-    if (!sec) return;
-    const name = sec.getAttribute('data-section-name');
-    if (state.collapsedSections.has(name)) state.collapsedSections.delete(name);
-    else state.collapsedSections.add(name);
-    render();
+    if (sec) {
+      const name = sec.getAttribute('data-section-name');
+      if (state.collapsedSections.has(name)) state.collapsedSections.delete(name);
+      else state.collapsedSections.add(name);
+      render();
+      return;
+    }
+    // 2. Bar/Milestone → Pin-Toggle (Tooltip aus, Highlight bleibt sticky)
+    //    Erneuter Click auf gleichen Bar oder leeren Bereich entpinnt.
+    const barEl = e.target.closest('[data-key]');
+    if (barEl) {
+      const key = barEl.getAttribute('data-key');
+      if (_pinnedKey === key) {
+        _pinnedKey = null;
+        clearArrowHl();
+      } else {
+        _pinnedKey = key;
+        const selPin = `.dep-arrow[data-from="${CSS.escape(key)}"], .dep-arrow[data-to="${CSS.escape(key)}"]`;
+        setArrowHl([...svgWrap.querySelectorAll(selPin)]);
+      }
+      tip.style.display = 'none';
+      return;
+    }
+    // 3. Klick in leeren SVG-Bereich → entpinnen
+    if (_pinnedKey !== null) {
+      _pinnedKey = null;
+      clearArrowHl();
+    }
   });
 
   document.getElementById('date-from').addEventListener('change', e => {
@@ -2509,11 +2534,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Hover-Highlighting für Dependency-Pfeile (UI-Feature, kein PlantUML-Konzept).
   // — Hover auf Pfeil:  diesen Pfeil hervorheben + Tooltip "From → To" (Form).
   // — Hover auf Bar/Milestone: alle ein- und abgehenden Pfeile hervorheben.
+  // — Click auf Bar/Milestone: Pin-Modus — Tooltip aus, Highlight bleibt sticky.
+  //   Erneuter Click oder Click in leeren Bereich entpinnt.
   let _hlArrows = [];
+  let _pinnedKey = null;
   function clearArrowHl() {
     for (const el of _hlArrows) el.classList.remove('hl');
     _hlArrows = [];
   }
+  // Wird von render() aufgerufen, damit Pin/Highlights nicht über Re-Renders stale werden.
+  window.__resetDepHover = () => { _pinnedKey = null; _hlArrows = []; };
   function setArrowHl(arr) {
     if (arr.length === _hlArrows.length && arr.every((el, i) => el === _hlArrows[i])) return;
     clearArrowHl();
@@ -2526,6 +2556,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   svgWrap.addEventListener('mousemove', e => {
+    // Pin-Modus: Tooltip + Hover-Highlights komplett aus, sticky Highlight bleibt.
+    if (_pinnedKey !== null) {
+      tip.style.display = 'none';
+      return;
+    }
     // (a) Hover auf Dependency-Pfeil → Tooltip + Highlight
     const arrow = e.target.closest('.dep-arrow');
     if (arrow) {
