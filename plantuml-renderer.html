@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.49</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.50</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1576,6 +1576,12 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     for (const r of rows) {
       if (r.type === 'task' || r.type === 'milestone') rowMap[r.name] = r;
     }
+    // Lookup für Constraint-Form: dep.to → afterTask + endAfterTask-Info.
+    // Wenn der dep-Pfeil zu einer expliziten Constraint passt, wird die Pfeil-Form
+    // entsprechend gewählt: SS (Start-Start), FF (Finish-Finish), SF (Start-Finish),
+    // FS (Finish-Start, default).
+    const itemByName = {};
+    for (const it of items) if (it.name) itemByName[it.name] = it;
     const ARW = 6; // arrowhead size
     for (const dep of items.filter(i => i.type === 'dep')) {
       const rA = rowMap[dep.from], rB = rowMap[dep.to];
@@ -1586,38 +1592,59 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const startDateA = rA.type === 'milestone' ? rA.date : rA.start;
       const endDateA   = rA.type === 'milestone' ? rA.date : rA.end;
       const startDateB = rB.type === 'milestone' ? rB.date : rB.start;
-      if (!startDateA || !endDateA || !startDateB) continue;
+      const endDateB   = rB.type === 'milestone' ? rB.date : rB.end;
+      if (!startDateA || !endDateA || !startDateB || !endDateB) continue;
 
       const sdA = daysBetween(wStart, startDateA);
       const edA = daysBetween(wStart, endDateA);
       const sdB = daysBetween(wStart, startDateB);
+      const edB = daysBetween(wStart, endDateB);
 
       // Skip if source bar is entirely outside window, or target starts after window
       if (edA < 0 || sdA > totalDays || sdB > totalDays) continue;
 
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const endA_X   = labelW + clamp(edA, 0, totalDays) * ppd;  // rechtes Ende des Vorgängers
-      const startB_X = labelW + clamp(sdB, 0, totalDays) * ppd;  // linker Anfang des Nachfolgers
+      const X_sA = labelW + clamp(sdA, 0, totalDays) * ppd;  // links A
+      const X_eA = labelW + clamp(edA, 0, totalDays) * ppd;  // rechts A
+      const X_sB = labelW + clamp(sdB, 0, totalDays) * ppd;  // links B
+      const X_eB = labelW + clamp(edB, 0, totalDays) * ppd;  // rechts B
       const midY_A = rA.barCenterY;
       const midY_B = rB.barCenterY;
 
-      // Orthogonales Routing (klassischer Gantt-Pfeil): horizontaler Stub am Vorgänger-Ende,
-      // vertikaler Sprung zur Nachfolger-Zeile, horizontal zum Nachfolger-Anfang.
-      // — Wenn ausreichend horizontale Lücke (gap > 2*stub): vertikal in der Mitte zwischen End-A und Start-B.
-      // — Sonst (parallel/enge Lücke): fester Stub rechts vom Vorgänger, dann vertikal, dann ggf. zurück nach links.
+      // Constraint-Form aus zugehörigem afterTask/endAfterTask des Nachfolgers ableiten.
+      // SS: B startet wenn A startet. FF: B endet wenn A endet. SF: B endet wenn A startet.
+      const toItem = itemByName[dep.to];
+      const isSS = toItem && toItem.afterTask === dep.from && toItem.afterWhat === 'start';
+      const isFF = toItem && toItem.endAfterTask === dep.from && toItem.endAfterWhat === 'end';
+      const isSF = toItem && toItem.endAfterTask === dep.from && toItem.endAfterWhat === 'start';
+      // sonst: FS (Finish-Start, klassischer Default)
+
+      // Startpunkt am Vorgänger und Endpunkt am Nachfolger je nach Form
+      let X_from, X_to;
+      if (isSS)       { X_from = X_sA; X_to = X_sB; }
+      else if (isFF)  { X_from = X_eA; X_to = X_eB; }
+      else if (isSF)  { X_from = X_sA; X_to = X_eB; }
+      else            { X_from = X_eA; X_to = X_sB; } // FS default
+
+      // Orthogonales Routing (klassischer Gantt-Pfeil): horizontaler Stub am Vorgänger,
+      // vertikaler Sprung zur Nachfolger-Zeile, horizontal zum Nachfolger-Anchor.
+      // — Wenn ausreichend horizontale Lücke (gap > 2*stub): vertikal in der Mitte.
+      // — Sonst (Stub-Offset): rechts oder links vom Vorgänger-Anchor je nach Richtung.
       const stub = 8;
-      const gap = startB_X - endA_X;
-      const midX = gap > 2 * stub ? endA_X + gap / 2 : endA_X + stub;
-      // Pfeilspitze 2px vor der Nachfolger-Bar, damit sie nicht im Bar verschwindet.
-      const arrowTipX = startB_X - 2;
-      const path = `M ${endA_X} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
+      const dir = X_to >= X_from ? 1 : -1;
+      const gap = Math.abs(X_to - X_from);
+      const midX = gap > 2 * stub ? X_from + dir * (gap / 2) : X_from + dir * stub;
+      // Pfeilspitze 2px vor dem Anker des Nachfolgers, damit sie nicht im Bar verschwindet.
+      const arrowTipX = X_to - dir * 2;
+      const path = `M ${X_from} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
       const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
       const depColor = isCritEdge ? '#c0392b' : '#888';
       const depWidth = isCritEdge ? '1.6' : '1.2';
       g.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
 
-      // Arrowhead — Spitze auf den linken Bar-Rand zeigend.
-      g.push(`<polygon points="${arrowTipX},${midY_B} ${arrowTipX - ARW},${midY_B - ARW/2} ${arrowTipX - ARW},${midY_B + ARW/2}" fill="${depColor}"/>`);
+      // Arrowhead — Spitze in Richtung Nachfolger-Anchor.
+      const tipBackX = arrowTipX - dir * ARW;
+      g.push(`<polygon points="${arrowTipX},${midY_B} ${tipBackX},${midY_B - ARW/2} ${tipBackX},${midY_B + ARW/2}" fill="${depColor}"/>`);
     }
   }
 
