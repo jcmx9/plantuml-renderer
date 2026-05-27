@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.5.54** (2026-05-27) · German version: [README.md](README.md)
+> Current version: **v26.5.55** (2026-05-27) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -51,12 +51,11 @@ plantuml-renderer.html   ← the only file
 ### Get via Git (recommended — updates via `git pull`)
 
 ```bash
-# one-time clone (creates subdir `plantuml-renderer` in the current path)
-git clone https://github.com/jcmx9/plantuml-renderer.git
-# alternative SSH: git clone git@github.com:jcmx9/plantuml-renderer.git
+# one-time clone (into current path; directory should be empty)
+git clone https://github.com/jcmx9/plantuml-renderer.git .
+# alternative SSH: git clone git@github.com:jcmx9/plantuml-renderer.git .
 
 # update later
-cd plantuml-renderer
 git pull
 ```
 
@@ -79,7 +78,6 @@ Caveat: the File System Access API (`showDirectoryPicker`) may be blocked when i
 ### Option 2: local Python web server (recommended)
 
 ```bash
-cd plantuml-renderer
 python3 -m http.server 8000
 ```
 
