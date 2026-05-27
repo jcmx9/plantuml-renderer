@@ -1,11 +1,11 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.53** (2026-05-27) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.54** (2026-05-27) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
 ```
-~/GitHub/plantuml-renderer/plantuml-renderer.html   ← die einzige Datei
+plantuml-renderer.html   ← die einzige Datei
 ```
 
 ## Features
@@ -56,12 +56,12 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 ### Holen via Git (empfohlen — Updates per `git pull`)
 
 ```bash
-# einmalig klonen
-git clone https://github.com/jcmx9/plantuml-renderer.git ~/GitHub/plantuml-renderer
-# alternativ SSH: git clone git@github.com:jcmx9/plantuml-renderer.git ~/GitHub/plantuml-renderer
+# einmalig klonen (legt Unterordner `plantuml-renderer` im aktuellen Pfad an)
+git clone https://github.com/jcmx9/plantuml-renderer.git
+# alternativ SSH: git clone git@github.com:jcmx9/plantuml-renderer.git
 
 # später aktualisieren
-cd ~/GitHub/plantuml-renderer
+cd plantuml-renderer
 git pull
 ```
 
@@ -84,7 +84,7 @@ Funktioniert mit Einschränkung: die File-System-Access-API (`showDirectoryPicke
 ### Variante 2: Lokaler Python-Webserver (empfohlen)
 
 ```bash
-cd ~/GitHub/plantuml-renderer
+cd plantuml-renderer
 python3 -m http.server 8000
 ```
 
