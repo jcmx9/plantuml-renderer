@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.47</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.48</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -336,8 +336,30 @@ function parsePlantUML(text) {
     }
     const push = item => {
       item.sourceLine = lineNum;
-      rawItems.push(item);
       if (_aliasLabel) item.label = _aliasLabel;
+      // Multi-Statement-per-Task: wenn schon ein Task/Milestone mit gleichem Namen
+      // existiert, neue Properties (nicht-null) ins existing Item mergen. Doku-Beispiel:
+      //   [Test prototype] requires 9 days
+      //   [Test prototype] starts 3 days after [Prototype design]'s end
+      // → ein Task mit duration=9 UND afterTask='Prototype design'.
+      // Patterns ohne explicit Duration setzen `duration: null`; finaler Default 1 nach
+      // dem Parser-Loop. Damit überschreibt der explicit Wert (z. B. 9) keinen Default.
+      if (item.type === 'task' || item.type === 'milestone') {
+        const existing = rawItems.findLast(i =>
+          (i.type === item.type) && (i.name === item.name) && !i.parseError
+        );
+        if (existing) {
+          // Wenn neues Item Constraint einführt, alte Default-Datumswerte resetten,
+          // damit der Resolver den Constraint auflöst statt am Default kleben zu bleiben.
+          if (item.afterTask && !existing.afterTask) { existing.start = null; existing.end = null; }
+          if (item.endAfterTask && !existing.endAfterTask) { existing.end = null; }
+          for (const k in item) {
+            if (item[k] !== null && item[k] !== undefined) existing[k] = item[k];
+          }
+          return existing;
+        }
+      }
+      rawItems.push(item);
       return item;
     };
 
@@ -515,7 +537,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s*$/))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
-        duration: 1, afterTask: null, note: null, sourceLine: lineNum }); continue;
+        duration: null, afterTask: null, note: null, sourceLine: lineNum }); continue;
     }
 
     // Task: [Name] starts DATE and lasts|requires N unit
@@ -548,7 +570,7 @@ function parsePlantUML(text) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
-        duration: 1, note: null, sourceLine: lineNum }); continue;
+        duration: null, note: null, sourceLine: lineNum }); continue;
     }
 
     // Task DURATION + END-ANCHOR: [Name] lasts|requires N days and ends at [Y]'s start|end
@@ -587,7 +609,7 @@ function parsePlantUML(text) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
         afterTask: m[5], offset: parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
-        duration: 1, note: null, sourceLine: lineNum }); continue;
+        duration: null, note: null, sourceLine: lineNum }); continue;
     }
 
 
@@ -625,7 +647,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start/))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[2], afterWhat: 'start', offset: 0, duration: 1, note: null }); continue;
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
     }
 
     // Task: [Name] starts at [Other]'s end + OFFSET and ends DATE  (oder − OFFSET)
@@ -662,7 +684,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end/))) {
       lastTaskName = m[1];
       push({ type: 'task', name: m[1], start: null, end: null,
-        afterTask: m[2], offset: 0, duration: 1, note: null }); continue;
+        afterTask: m[2], offset: 0, duration: null, note: null }); continue;
     }
 
     // Fall-through: kein Pattern hat gegriffen → Heuristik für wahrscheinliche Tippfehler
@@ -697,6 +719,14 @@ function parsePlantUML(text) {
     }
   }
 
+  // Default-Duration für Tasks ohne explizite Duration-Clause (Patterns wie `starts at [Y]'s end`
+  // ohne `and (lasts|requires) N`). Default = 1 Arbeitstag. Wird NACH dem Parser-Loop gesetzt,
+  // damit Multi-Statement-Merge eine echte Duration (z. B. 9) nicht durch Default-1 verdrängt.
+  for (const it of rawItems) {
+    if (it.type === 'task' && (it.duration === null || it.duration === undefined)) {
+      it.duration = 1;
+    }
+  }
   return { title, projectStart, rawItems, closedDates, closedWeekdays, openOverrides, parseWarnings };
 }
 
