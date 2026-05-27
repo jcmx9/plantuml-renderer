@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.57</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.58</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -257,13 +257,24 @@ function parsePlantUML(text) {
   // mehrzeilige Kommentare zuverlässig verschwinden. Non-greedy.
   let cleaned = text.replace(/\/'[\s\S]*?'\//g, '');
 
-  // Compound-Duration: `N weeks and M days` → `(N*7 + M) days` (Doku-belegt:
+  // PlantUML-Doku: „Woche: 7 Tage (oder 5 Tage bei geschlossenem Wochenende)". Wenn Sat oder
+  // Sun in `WEEKDAY are closed` auftaucht, rechnen wir `lasts N weeks` als 5 statt 7 Tage —
+  // damit `lasts 14 weeks` 14 Kalenderwochen ergibt, nicht 20.
+  const _weekendClosed = /\b(saturday|sunday)\s+are?\s+closed\b/i.test(cleaned);
+  const _daysPerWeek = _weekendClosed ? 5 : 7;
+
+  // Compound-Duration: `N weeks and M days` → `(N*daysPerWeek + M) days` (Doku-belegt:
   // `[Task] requires 1 week and 4 days`). Vor allem anderen ersetzen, damit alle
   // bestehenden duration-Patterns weiter mit ihrer einfachen `N (days|weeks)`-Form matchen.
   cleaned = cleaned.replace(
     /(\d+)\s*(weeks?)\s+and\s+(\d+)\s*(days?)/gi,
-    (_m, n1, _u1, n2) => `${parseInt(n1, 10) * 7 + parseInt(n2, 10)} days`
+    (_m, n1, _u1, n2) => `${parseInt(n1, 10) * _daysPerWeek + parseInt(n2, 10)} days`
   );
+
+  // Lokale parseDuration, die `_daysPerWeek` (closed-aware) statt globalen 7 nutzt.
+  // Verschattet die globale Variante in dieser Funktion.
+  const parseDuration = (num, unit) =>
+    unit.toLowerCase().startsWith('week') ? parseInt(num, 10) * _daysPerWeek : parseInt(num, 10);
 
   // Multi-Line then-Succession ("Simplified task succession", Doku-belegt):
   //   [A] requires 14 days then
@@ -1482,11 +1493,12 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const barStyle = r.link ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
         const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
+        const durAttr = r.duration != null ? ` data-duration="${r.duration}"` : '';
         const predsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
         const succsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
         const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${durAttr}${predsAttr}${succsAttr}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -2468,13 +2480,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.dataset.ms) {
       tip.appendChild(document.createTextNode(`Datum: ${fmtTipDate(el.dataset.ms)}`));
     } else {
-      const days = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
-      const weeks = Math.ceil(days / 7);
       tip.appendChild(document.createTextNode(`Start: ${fmtTipDate(el.dataset.start)}`));
       tip.appendChild(document.createElement('br'));
       tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
       tip.appendChild(document.createElement('br'));
-      tip.appendChild(document.createTextNode(`Dauer: ${days} ${days === 1 ? 'Tag' : 'Tage'} (${weeks} ${weeks === 1 ? 'Woche' : 'Wochen'})`));
+      // Dauer aus PUML-Eingabe (data-duration = `lasts/requires N` in Personentagen).
+      // Format: "9 PT (1W2T)" — Personentage plus Wochen+Resttage-Aufschlüsselung.
+      // Fallback bei Tasks ohne explicit duration (z. B. `starts DATE and ends DATE`):
+      // Kalender-Span aus start/end.
+      let durLine;
+      if (el.dataset.duration) {
+        const pt = parseInt(el.dataset.duration, 10);
+        const wks = Math.floor(pt / 7);
+        const rest = pt - wks * 7;
+        let suffix = '';
+        if (wks > 0 && rest > 0) suffix = ` (${wks}W${rest}T)`;
+        else if (wks > 0) suffix = ` (${wks}W)`;
+        durLine = `Dauer: ${pt} PT${suffix}`;
+      } else {
+        const calDays = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
+        const calWeeks = Math.ceil(calDays / 7);
+        durLine = `Dauer: ${calDays} ${calDays === 1 ? 'Tag' : 'Tage'} (${calWeeks} ${calWeeks === 1 ? 'Woche' : 'Wochen'})`;
+      }
+      tip.appendChild(document.createTextNode(durLine));
       if (el.dataset.pct) {
         tip.appendChild(document.createElement('br'));
         tip.appendChild(document.createTextNode(`Fortschritt: ${el.dataset.pct}%`));
