@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.51</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.52</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -148,6 +148,9 @@ hr { border: none; border-top: 1px solid #eef1f4; }
     </label>
     <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
       <input type="checkbox" id="chk-deps" checked> Abhängigkeiten anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-curved"> Pfeile als Kurven
     </label>
     <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
       <input type="checkbox" id="chk-critical"> Kritischen Pfad hervorheben
@@ -1229,7 +1232,7 @@ function contrastColor(hex) {
   return 1.05/(L+0.05) >= (L+0.05)/0.088 ? '#fff' : '#1e3a4c';
 }
 
-function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true, openOverrides = new Set()) {
+function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true, openOverrides = new Set(), showCurved = false) {
   const items = parsed.rawItems;
 
   // Direkte Vorgänger/Nachfolger pro Task/Milestone aus afterTask + dep-Pfeilen.
@@ -1659,7 +1662,18 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const midX = midX_base + laneIdx * LANE_PX * dir;
       // Pfeilspitze 2px vor dem Anker des Nachfolgers, damit sie nicht im Bar verschwindet.
       const arrowTipX = X_to - dir * 2;
-      const path = `M ${X_from} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
+      // showCurved: kubische Bezier-S-Kurve zwischen Start und Pfeilspitze, ein Kontroll-Punkt
+      // je Endpunkt mit horizontalem Tangenten-Versatz von max(20px, gap/3). Sonst klassisch
+      // orthogonal (H-V-H).
+      let path;
+      if (showCurved) {
+        const tangent = Math.max(20, Math.abs(arrowTipX - X_from) / 3);
+        const c1X = X_from + dir * tangent;
+        const c2X = arrowTipX - dir * tangent;
+        path = `M ${X_from} ${midY_A} C ${c1X} ${midY_A}, ${c2X} ${midY_B}, ${arrowTipX} ${midY_B}`;
+      } else {
+        path = `M ${X_from} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
+      }
       const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
       const depColor = isCritEdge ? '#c0392b' : '#888';
       const depWidth = isCritEdge ? '1.6' : '1.2';
@@ -1812,13 +1826,14 @@ function render() {
     const showMS    = document.getElementById('chk-milestones').checked;
     const showNotes = document.getElementById('chk-notes').checked;
     const showDeps  = document.getElementById('chk-deps').checked;
+    const showCurved = document.getElementById('chk-curved').checked;
     const showCrit  = document.getElementById('chk-critical').checked;
     const parsedView = showMS ? state.parsed : { ...state.parsed, rawItems: state.parsed.rawItems.filter(it => it.type !== 'milestone') };
     const cn = showCrit ? state.cp.criticalNodes : new Set();
     const ce = showCrit ? state.cp.criticalEdges : new Set();
     svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
                    state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
-                   state.collapsedSections, showNotes, state.parsed.openOverrides);
+                   state.collapsedSections, showNotes, state.parsed.openOverrides, showCurved);
   } catch (e) {
     // Render-Fehler: bestehendes SVG NICHT antasten, nur Warnung anzeigen.
     showWarnings([], 'Render-Fehler: ' + (e.message || e));
@@ -2300,6 +2315,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chk-milestones').addEventListener('change', () => render());
   document.getElementById('chk-notes').addEventListener('change', () => render());
   document.getElementById('chk-deps').addEventListener('change', () => render());
+  document.getElementById('chk-curved').addEventListener('change', () => render());
   document.getElementById('chk-critical').addEventListener('change', () => render());
   document.getElementById('btn-zoom-100').addEventListener('click', () => {
     state.fitMode = false;
