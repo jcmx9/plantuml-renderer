@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.56</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.57</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1482,12 +1482,11 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const barStyle = r.link ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
         const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
-        const durAttr = r.duration != null ? ` data-duration="${r.duration}"` : '';
         const predsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
         const succsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
         const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${durAttr}${predsAttr}${succsAttr}>`);
+        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -2469,18 +2468,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el.dataset.ms) {
       tip.appendChild(document.createTextNode(`Datum: ${fmtTipDate(el.dataset.ms)}`));
     } else {
-      const calDays = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
-      // PlantUML's `lasts N days` zählt Arbeitstage (skip closed) — wir speichern den
-      // ursprünglichen Wert in data-duration und zeigen ihn primär. Kalender-Span als
-      // sekundäre Info, falls abweichend.
-      const wd = el.dataset.duration ? parseInt(el.dataset.duration, 10) : calDays;
+      const days = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
+      const weeks = Math.ceil(days / 7);
       tip.appendChild(document.createTextNode(`Start: ${fmtTipDate(el.dataset.start)}`));
       tip.appendChild(document.createElement('br'));
       tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
       tip.appendChild(document.createElement('br'));
-      let durLine = `Dauer: ${wd} ${wd === 1 ? 'Arbeitstag' : 'Arbeitstage'}`;
-      if (el.dataset.duration && calDays !== wd) durLine += ` (${calDays} Kalendertage)`;
-      tip.appendChild(document.createTextNode(durLine));
+      tip.appendChild(document.createTextNode(`Dauer: ${days} ${days === 1 ? 'Tag' : 'Tage'} (${weeks} ${weeks === 1 ? 'Woche' : 'Wochen'})`));
       if (el.dataset.pct) {
         tip.appendChild(document.createElement('br'));
         tip.appendChild(document.createTextNode(`Fortschritt: ${el.dataset.pct}%`));
