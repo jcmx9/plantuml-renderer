@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.46</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.47</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1560,26 +1560,29 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       // Skip if source bar is entirely outside window, or target starts after window
       if (edA < 0 || sdA > totalDays || sdB > totalDays) continue;
 
-      // Start: above or below bar A depending on whether B is above or below A. Nutzt barCenterY,
-      // damit Pfeile auch bei interner Notiz (top/bottom) exakt an der Bar-Mitte ansetzen.
-      const topY_A = rA.barCenterY - BAR_H / 2 - 2;
-      const botY_A = rA.barCenterY + BAR_H / 2 + 2;
-      const midY_B = rB.barCenterY;
-      const startY = midY_B < rA.barCenterY ? topY_A : botY_A;
-
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-      const midX_A = labelW + clamp((sdA + edA) / 2, 0, totalDays) * ppd;
-      const x2     = labelW + clamp(sdB, 0, totalDays) * ppd;
+      const endA_X   = labelW + clamp(edA, 0, totalDays) * ppd;  // rechtes Ende des Vorgängers
+      const startB_X = labelW + clamp(sdB, 0, totalDays) * ppd;  // linker Anfang des Nachfolgers
+      const midY_A = rA.barCenterY;
+      const midY_B = rB.barCenterY;
 
-      // Path: from top or bottom center of A → across to bar B midpoint
-      const path = `M ${midX_A} ${startY} V ${midY_B} H ${x2}`;
+      // Orthogonales Routing (klassischer Gantt-Pfeil): horizontaler Stub am Vorgänger-Ende,
+      // vertikaler Sprung zur Nachfolger-Zeile, horizontal zum Nachfolger-Anfang.
+      // — Wenn ausreichend horizontale Lücke (gap > 2*stub): vertikal in der Mitte zwischen End-A und Start-B.
+      // — Sonst (parallel/enge Lücke): fester Stub rechts vom Vorgänger, dann vertikal, dann ggf. zurück nach links.
+      const stub = 8;
+      const gap = startB_X - endA_X;
+      const midX = gap > 2 * stub ? endA_X + gap / 2 : endA_X + stub;
+      // Pfeilspitze 2px vor der Nachfolger-Bar, damit sie nicht im Bar verschwindet.
+      const arrowTipX = startB_X - 2;
+      const path = `M ${endA_X} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
       const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
       const depColor = isCritEdge ? '#c0392b' : '#888';
       const depWidth = isCritEdge ? '1.6' : '1.2';
       g.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
 
-      // Arrowhead pointing right into bar B center
-      g.push(`<polygon points="${x2},${midY_B} ${x2 - ARW},${midY_B - ARW/2} ${x2 - ARW},${midY_B + ARW/2}" fill="${depColor}"/>`);
+      // Arrowhead — Spitze auf den linken Bar-Rand zeigend.
+      g.push(`<polygon points="${arrowTipX},${midY_B} ${arrowTipX - ARW},${midY_B - ARW/2} ${arrowTipX - ARW},${midY_B + ARW/2}" fill="${depColor}"/>`);
     }
   }
 
