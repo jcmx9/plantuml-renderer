@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.45</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.46</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -854,7 +854,13 @@ function computeCriticalPath(rawItems) {
   };
   for (const it of rawItems) {
     if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
-      addEdge(it.afterTask, it.name, true, it.afterWhat === 'start');
+      // Backward-Constraint (`starts N days before [Y]`) hat offset<0. CPM ist forward-only
+      // definiert (FS-Beziehungen); ein hard-FS-Edge mit negativem Gap würde LS[from] ins
+      // Negative ziehen und die echte Hard-Chain als nicht-kritisch markieren. Als soft edge:
+      // Backward-Task wird connected gemeldet, Slack ist positiv (semantisch korrekt — eine
+      // vorgelagerte Phase ist eben nicht Teil des kritischen Hauptpfads).
+      const isBackward = (it.offset || 0) < 0;
+      addEdge(it.afterTask, it.name, !isBackward, it.afterWhat === 'start');
     }
     // End-Anchor: Nachfolger.end gebunden an Vorgänger.start/end. Im CPM-Sinn ist
     // das FF (Finish-Finish), nicht FS — würde als hard FS-Edge falsche Lag-Propagation
