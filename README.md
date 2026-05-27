@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.52** (2026-05-27) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.5.53** (2026-05-27) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -52,6 +52,24 @@ Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Br
 ---
 
 ## Installation & Start
+
+### Holen via Git (empfohlen — Updates per `git pull`)
+
+```bash
+# einmalig klonen
+git clone https://github.com/jcmx9/plantuml-renderer.git ~/GitHub/plantuml-renderer
+# alternativ SSH: git clone git@github.com:jcmx9/plantuml-renderer.git ~/GitHub/plantuml-renderer
+
+# später aktualisieren
+cd ~/GitHub/plantuml-renderer
+git pull
+```
+
+### Alternative: Direkt-Download
+
+Letztes Release-Asset (`plantuml-renderer.html`) von [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) herunterladen — keine weiteren Dateien nötig.
+
+---
 
 ### Variante 1: Doppelklick (einfachste Form)
 
