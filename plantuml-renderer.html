@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.59</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.60</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -319,6 +319,19 @@ function parsePlantUML(text) {
     parseWarnings.push({
       lineNum: 0, raw: '',
       reason: `D+n-Notation verwendet (${dPlusUsages} Vorkommen), aber 'Project starts YYYY-MM-DD' fehlt — Anker für D+0 ist nicht definiert.`,
+    });
+  }
+  // PlantUML-Builtins werden aktuell nicht unterstützt — explizite Warning statt stilles
+  // Fall-Through, damit User sieht: `%now()` / `%date(...)` / `!$var = ...` sind erkannt,
+  // aber bewusst nicht umgesetzt.
+  const builtinHits = [];
+  if (/%now\s*\(\s*\)/.test(cleaned)) builtinHits.push('%now()');
+  if (/%date\s*\(/.test(cleaned)) builtinHits.push('%date(...)');
+  if (/^\s*!\$\w+\s*=/m.test(cleaned)) builtinHits.push('!$var = ...');
+  if (builtinHits.length > 0) {
+    parseWarnings.push({
+      lineNum: 0, raw: '',
+      reason: `PlantUML-Builtin-Funktionen/Variablen verwendet (${builtinHits.join(', ')}) — aktuell nicht unterstützt vom Renderer.`,
     });
   }
   let title = '';
@@ -1438,6 +1451,10 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     g.push(`<line x1="${tx}" y1="${hdrH}" x2="${tx}" y2="${totalH}" stroke="${C.today}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`);
   }
 
+  // Position-Marker für Dependency-Arrows: sie werden später nach diesem Index
+  // in `g` eingefügt, damit Bars und Milestones ÜBER den Pfeilen liegen.
+  const _arrowsInsertIdx = g.length;
+
   // ── Rows ──────────────────────────────────────────────────────────────────
 
   for (const r of rows) {
@@ -1594,8 +1611,11 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
   }
 
   // ── Dependency arrows ─────────────────────────────────────────────────────
+  // Werden in `arrows[]` aufgebaut und ans `_arrowsInsertIdx` in `g` eingefügt,
+  // damit sie HINTER den Bars/Milestones liegen.
 
   if (showDeps) {
+    const arrows = [];
     const rowMap = {};
     for (const r of rows) {
       if (r.type === 'task' || r.type === 'milestone') rowMap[r.name] = r;
@@ -1698,12 +1718,14 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
       const depColor = isCritEdge ? '#c0392b' : '#888';
       const depWidth = isCritEdge ? '1.6' : '1.2';
-      g.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
+      arrows.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
 
       // Arrowhead — Spitze in Richtung Nachfolger-Anchor.
       const tipBackX = arrowTipX - dir * ARW;
-      g.push(`<polygon points="${arrowTipX},${midY_B} ${tipBackX},${midY_B - ARW/2} ${tipBackX},${midY_B + ARW/2}" fill="${depColor}"/>`);
+      arrows.push(`<polygon points="${arrowTipX},${midY_B} ${tipBackX},${midY_B - ARW/2} ${tipBackX},${midY_B + ARW/2}" fill="${depColor}"/>`);
     }
+    // Pfeile vor die Bars/Milestones im SVG einfügen (z-Order: Bars über Pfeilen).
+    g.splice(_arrowsInsertIdx, 0, ...arrows);
   }
 
   // ── Header (drawn last = on top) ──────────────────────────────────────────
