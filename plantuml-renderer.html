@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.60</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.61</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1389,11 +1389,19 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
   // Background
   g.push(`<rect width="${totalW}" height="${totalH}" fill="${C.rowBg}"/>`);
 
-  // Alternating row backgrounds
+  // Alternating row backgrounds. Merke `r._rowFill` pro Row, damit Outer-Label-Text
+  // später denselben Hintergrund als Notlösung gegen darunterliegende Pfeil-Linien
+  // bekommen kann.
   let alt = false;
   for (const r of rows) {
-    if (r.type === 'section') { alt = false; continue; }
-    if (alt) g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.rowAlt}"/>`);
+    if (r.type === 'section') { alt = false; r._rowFill = C.sectionBg; continue; }
+    if (r.type === 'subsection') { r._rowFill = C.subsectionBg; continue; }
+    if (alt) {
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.rowAlt}"/>`);
+      r._rowFill = C.rowAlt;
+    } else {
+      r._rowFill = C.rowBg;
+    }
     alt = !alt;
   }
 
@@ -1451,16 +1459,12 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     g.push(`<line x1="${tx}" y1="${hdrH}" x2="${tx}" y2="${totalH}" stroke="${C.today}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`);
   }
 
-  // Position-Marker für Dependency-Arrows: sie werden später nach diesem Index
-  // in `g` eingefügt, damit Bars und Milestones ÜBER den Pfeilen liegen.
-  const _arrowsInsertIdx = g.length;
-
-  // ── Rows ──────────────────────────────────────────────────────────────────
-
+  // ── Sections / Subsections (vor Pfeilen rendern) ──────────────────────────
+  // Section-/Subsection-Header werden BEVOR der Arrow-Insert-Index gepushed,
+  // damit Pfeile später visuell ÜBER den Section-Hintergründen verlaufen — sonst
+  // verliert man bei langen Vertikal-Sprüngen den optischen Anschluss.
   for (const r of rows) {
-    // Bar-Mitte aus dem Layout-Pass übernehmen (siehe barCenterY im rows-Layout).
     const my = r.barCenterY;
-
     if (r.type === 'section') {
       const isColl = collapsedSections.has(r.name);
       const caret = isColl ? '▶' : '▼';
@@ -1469,17 +1473,26 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       g.push(`<text x="12" y="${my}" dy="0.35em" fill="${C.sectionFg}"`,
              ` font-weight="700" font-size="${FS_SEC}">${caret}  ${esc(r.name)}</text>`);
       g.push(`</g>`);
-      continue;
-    }
-
-    if (r.type === 'subsection') {
+    } else if (r.type === 'subsection') {
       g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.subsectionBg}"/>`);
       g.push(`<rect x="0" y="${r.y}" width="3" height="${r.h}" fill="${C.subsectionAccent}"/>`);
       g.push(`<text x="16" y="${my}" dy="0.35em" fill="${C.subsectionFg}"`,
              ` font-weight="600" font-size="${FS}">${esc(r.name)}</text>`);
       g.push(`<line x1="0" y1="${r.y + r.h}" x2="${totalW}" y2="${r.y + r.h}" stroke="${C.sep}" stroke-width="0.5"/>`);
-      continue;
     }
+  }
+
+  // Position-Marker für Dependency-Arrows: sie werden später nach diesem Index
+  // in `g` eingefügt — also NACH Sections/Subsections (Pfeile drüber) und
+  // VOR Bars/Milestones (Bars drüber).
+  const _arrowsInsertIdx = g.length;
+
+  // ── Rows: Tasks & Milestones ──────────────────────────────────────────────
+
+  for (const r of rows) {
+    if (r.type === 'section' || r.type === 'subsection') continue;
+    // Bar-Mitte aus dem Layout-Pass übernehmen (siehe barCenterY im rows-Layout).
+    const my = r.barCenterY;
 
     // Label column (right-aligned). If the item has a hyperlink (`[X] links to [[URL]]`),
     // wrap the label in an SVG <a> with target="_blank" and add an underline cue.
@@ -1550,6 +1563,10 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
                  ` fill="${barFg}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
         } else {
           const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
+          // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
+          // Outer-Label-Text laufen und ihn unleserlich machen.
+          const padX = 3, padY = 2;
+          g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${tw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
                  ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
           labelEndX = lx + tw;
@@ -1588,8 +1605,14 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
           g.push(`<polygon points="${mx},${my-oz} ${mx+oz},${my} ${mx},${my+oz} ${mx-oz},${my}"`,
                  ` fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
         }
-        g.push(`<text x="${mx + sz + 5}" y="${my}" dy="0.35em"`,
-               ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+        {
+          const _mlx = mx + sz + 5;
+          const _mtw = approxTextW(displayName, FS);
+          const _mpadX = 3, _mpadY = 2;
+          g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
+          g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+        }
         g.push(`</g>`);
         g.push(linkClose);
       }
