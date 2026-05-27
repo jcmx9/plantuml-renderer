@@ -123,6 +123,12 @@ hr { border: none; border-top: 1px solid #eef1f4; }
   box-shadow: 0 4px 20px rgba(0,0,0,0.4); white-space: nowrap;
 }
 #gantt-tooltip b { display: block; font-size: 13.5px; color: #fff; margin-bottom: 4px; }
+
+/* Dependency-Hover-Highlighting (UI-Feature, kein PlantUML-Konzept) */
+.dep-arrow path { pointer-events: stroke; }
+.dep-arrow polygon { pointer-events: visiblePainted; }
+.dep-arrow.hl path { stroke: #2980b9; stroke-width: 2.5; }
+.dep-arrow.hl polygon { fill: #2980b9; }
 </style>
 </head>
 <body>
@@ -131,7 +137,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.61</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.62</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1537,7 +1543,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const succsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
         const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
-        g.push(`<g data-name="${esc(displayName)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
+        g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
         g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
@@ -1597,7 +1603,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const msPredsAttr = msPredsStr ? ` data-preds="${esc(msPredsStr)}"` : '';
         const msSuccsAttr = msSuccsStr ? ` data-succs="${esc(msSuccsStr)}"` : '';
         g.push(linkOpen);
-        g.push(`<g data-name="${esc(displayName)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}${msPredsAttr}${msSuccsAttr}>`);
+        g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}${msPredsAttr}${msSuccsAttr}>`);
         g.push(`<polygon points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
                ` fill="${C.milestone}"/>`);
         if (criticalNodes.has(r.name)) {
@@ -1741,11 +1747,15 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
       const depColor = isCritEdge ? '#c0392b' : '#888';
       const depWidth = isCritEdge ? '1.6' : '1.2';
+      // Form für Tooltip ableiten (FS default, sonst aus Constraint).
+      const form = isSS ? 'SS' : isFF ? 'FF' : isSF ? 'SF' : 'FS';
+      arrows.push(`<g class="dep-arrow" data-from="${esc(dep.from)}" data-to="${esc(dep.to)}" data-form="${form}">`);
       arrows.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
 
       // Arrowhead — Spitze in Richtung Nachfolger-Anchor.
       const tipBackX = arrowTipX - dir * ARW;
       arrows.push(`<polygon points="${arrowTipX},${midY_B} ${tipBackX},${midY_B - ARW/2} ${tipBackX},${midY_B + ARW/2}" fill="${depColor}"/>`);
+      arrows.push(`</g>`);
     }
     // Pfeile vor die Bars/Milestones im SVG einfügen (z-Order: Bars über Pfeilen).
     g.splice(_arrowsInsertIdx, 0, ...arrows);
@@ -2495,7 +2505,51 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const svgWrap = document.getElementById('svg-wrap');
+
+  // Hover-Highlighting für Dependency-Pfeile (UI-Feature, kein PlantUML-Konzept).
+  // — Hover auf Pfeil:  diesen Pfeil hervorheben + Tooltip "From → To" (Form).
+  // — Hover auf Bar/Milestone: alle ein- und abgehenden Pfeile hervorheben.
+  let _hlArrows = [];
+  function clearArrowHl() {
+    for (const el of _hlArrows) el.classList.remove('hl');
+    _hlArrows = [];
+  }
+  function setArrowHl(arr) {
+    if (arr.length === _hlArrows.length && arr.every((el, i) => el === _hlArrows[i])) return;
+    clearArrowHl();
+    for (const el of arr) { el.classList.add('hl'); _hlArrows.push(el); }
+  }
+  function labelOfKey(key) {
+    // Schau in einer Bar/Milestone mit data-key nach dem Display-Label.
+    const el = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    return el ? el.getAttribute('data-name') : key;
+  }
+
   svgWrap.addEventListener('mousemove', e => {
+    // (a) Hover auf Dependency-Pfeil → Tooltip + Highlight
+    const arrow = e.target.closest('.dep-arrow');
+    if (arrow) {
+      setArrowHl([arrow]);
+      const from = arrow.getAttribute('data-from');
+      const to = arrow.getAttribute('data-to');
+      const form = arrow.getAttribute('data-form') || 'FS';
+      const formLabel = {FS: 'Finish→Start', SS: 'Start→Start', FF: 'Finish→Finish', SF: 'Start→Finish'}[form] || form;
+      tip.replaceChildren();
+      const bLine = document.createElement('b');
+      bLine.textContent = `${labelOfKey(from)}  →  ${labelOfKey(to)}`;
+      tip.appendChild(bLine);
+      const sp = document.createElement('span');
+      sp.style.cssText = 'display:block;font-size:11px;color:#8ab4cc';
+      sp.textContent = `Abhängigkeit (${formLabel})`;
+      tip.appendChild(sp);
+      tip.style.display = 'block';
+      const tw0 = tip.offsetWidth, th0 = tip.offsetHeight;
+      let lx0 = e.clientX + 16, ly0 = e.clientY + 12;
+      if (lx0 + tw0 > window.innerWidth  - 8) lx0 = e.clientX - tw0 - 8;
+      if (ly0 + th0 > window.innerHeight - 8) ly0 = e.clientY - th0 - 8;
+      tip.style.left = lx0 + 'px'; tip.style.top = ly0 + 'px';
+      return;
+    }
     const noteEl = e.target.closest('[data-note]');
     if (noteEl && !noteEl.closest('[data-name]')) {
       const full = noteEl.getAttribute('data-note');
@@ -2515,10 +2569,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (lx + tw > window.innerWidth  - 8) lx = e.clientX - tw - 8;
       if (ly + th > window.innerHeight - 8) ly = e.clientY - th - 8;
       tip.style.left = lx + 'px'; tip.style.top = ly + 'px';
+      clearArrowHl();
       return;
     }
     const el = e.target.closest('[data-name]');
-    if (!el) { tip.style.display = 'none'; return; }
+    if (!el) { tip.style.display = 'none'; clearArrowHl(); return; }
+    // (b) Hover auf Bar/Milestone → alle ein- und abgehenden Pfeile hervorheben.
+    const elKey = el.getAttribute('data-key');
+    if (elKey) {
+      const sel = `.dep-arrow[data-from="${CSS.escape(elKey)}"], .dep-arrow[data-to="${CSS.escape(elKey)}"]`;
+      setArrowHl([...svgWrap.querySelectorAll(sel)]);
+    } else {
+      clearArrowHl();
+    }
     const name = el.getAttribute('data-name');
     const sec  = el.getAttribute('data-section');
     tip.replaceChildren();
@@ -2586,7 +2649,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tip.style.left = lx + 'px';
     tip.style.top  = ly + 'px';
   });
-  svgWrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  svgWrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; clearArrowHl(); });
 
   window.addEventListener('resize', () => {
     if (state.fitMode) applyFit();
