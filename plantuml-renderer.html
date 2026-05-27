@@ -127,8 +127,12 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 /* Dependency-Hover-Highlighting (UI-Feature, kein PlantUML-Konzept) */
 .dep-arrow path { pointer-events: stroke; }
 .dep-arrow polygon { pointer-events: visiblePainted; }
-.dep-arrow.hl path { stroke: #2980b9; stroke-width: 2.5; }
-.dep-arrow.hl polygon { fill: #2980b9; }
+.dep-arrow.hl path { stroke: #d97706; stroke-width: 2.2; }
+.dep-arrow.hl polygon { fill: #d97706; stroke: #d97706; stroke-width: 1.5; stroke-linejoin: miter; }
+/* Zweite Stufe: im Freeze-Modus Hover über eine bereits hervorgehobene Linie.
+   Komplementär zu Amber → kräftiges Cyan/Türkis; weit weg von Section-Blau. */
+.dep-arrow.hl2 path { stroke: #00acc1; stroke-width: 3; }
+.dep-arrow.hl2 polygon { fill: #00acc1; stroke: #00acc1; stroke-width: 2; stroke-linejoin: miter; }
 </style>
 </head>
 <body>
@@ -137,7 +141,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.63</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.64</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -376,9 +380,21 @@ function parsePlantUML(text) {
       const tam = line.match(/^(then\s+)\[([^\]]+)\]\s+as\s+\[([^\]]+)\]\s+([\s\S]*)/i);
       if (tam) { _aliasLabel = tam[2].trim(); line = tam[1] + '[' + tam[3].trim() + '] ' + tam[4].trim(); }
     }
+    // Inline-Notiz: `… : Notiz-Text` am Zeilenende — Renderer-Toleranz analog zu
+    // `note bottom`-Block. Wird vor allen anderen Patterns extrahiert und nach push()
+    // an das gepushed Task/Milestone gehängt. URL-Zeilen (`links to [[...]]`) werden
+    // ausgenommen, weil URLs `:` enthalten dürfen.
+    let _inlineNote = null;
+    if (!line.includes('[[')) {
+      const inm = line.match(/^(.+?)\s+:\s+(.+?)\s*$/);
+      if (inm) { _inlineNote = inm[2].trim(); line = inm[1]; }
+    }
     const push = item => {
       item.sourceLine = lineNum;
       if (_aliasLabel) item.label = _aliasLabel;
+      if (_inlineNote && (item.type === 'task' || item.type === 'milestone') && !item.note) {
+        item.note = _inlineNote;
+      }
       // Multi-Statement-per-Task: wenn schon ein Task/Milestone mit gleichem Namen
       // existiert, neue Properties (nicht-null) ins existing Item mergen. Doku-Beispiel:
       //   [Test prototype] requires 9 days
@@ -1674,6 +1690,38 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       return 0;
     }
 
+    // Anti-Crossing-Heuristik: Knoten mit mehreren Outgoing/Incoming bündeln ihre
+    // Pfeile nah an sich — vertikale Stubs aller Out-Pfeile von A starten am gleichen
+    // X kurz nach A, statt mittig zwischen A und B zu verlaufen. Dadurch reduziert
+    // sich der Bereich, in dem fremde Pfeile gekreuzt werden.
+    const outDeg = {}, inDeg = {};
+    for (const d of items.filter(i => i.type === 'dep')) {
+      outDeg[d.from] = (outDeg[d.from] || 0) + 1;
+      inDeg[d.to] = (inDeg[d.to] || 0) + 1;
+    }
+
+    // Bar-Avoidance: vertikale Stub-Linien sollen nicht durch fremde Bars laufen.
+    // Sammle alle sichtbaren Task-Bars einmal vor dem Loop — pro Pfeil prüfen wir,
+    // ob midX_base in einer Zwischen-Bar landet und verschieben ggf. ausweichend.
+    const obstacleBars = rows
+      .filter(r => (r.type === 'task' || r.type === 'milestone') && (r.start || r.date))
+      .map(r => {
+        const s = r.start || r.date;
+        const e = r.end || r.date;
+        const sd = Math.max(0, daysBetween(wStart, s));
+        const ed = Math.min(totalDays, daysBetween(wStart, e));
+        return { y: r.barCenterY, x0: labelW + sd * ppd, x1: labelW + ed * ppd };
+      });
+    function obstacleHit(midX, y_low, y_high) {
+      for (const b of obstacleBars) {
+        // Nur Bars in Zeilen ZWISCHEN Source und Target (exklusiv beide Endpunkte).
+        if (b.y <= y_low + 2 || b.y >= y_high - 2) continue;
+        // 4 px Sicherheitsabstand zur Bar-Kante.
+        if (midX > b.x0 - 4 && midX < b.x1 + 4) return true;
+      }
+      return false;
+    }
+
     for (const dep of items.filter(i => i.type === 'dep')) {
       const rA = rowMap[dep.from], rB = rowMap[dep.to];
       if (!rA || !rB) continue;
@@ -1724,7 +1772,35 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const stub = 8;
       const dir = X_to >= X_from ? 1 : -1;
       const gap = Math.abs(X_to - X_from);
-      const midX_base = gap > 2 * stub ? X_from + dir * (gap / 2) : X_from + dir * stub;
+      const fromMulti = (outDeg[dep.from] || 0) >= 2;
+      const toMulti = (inDeg[dep.to] || 0) >= 2;
+      let midX_base;
+      if (gap <= 2 * stub) {
+        midX_base = X_from + dir * stub;
+      } else if (fromMulti && !toMulti) {
+        // Multi-Out-Source: alle Pfeile von A bündeln sich kurz nach A.
+        midX_base = X_from + dir * stub;
+      } else if (toMulti && !fromMulti) {
+        // Multi-In-Target: alle Pfeile zu B bündeln sich kurz vor B.
+        midX_base = X_to - dir * stub;
+      } else {
+        // 1-zu-1 oder beide Multi: mittig zwischen Source und Target.
+        midX_base = X_from + dir * (gap / 2);
+      }
+      // Bar-Avoidance: bei langen vertikalen Sprüngen (>1.5 Zeilen) prüfen,
+      // ob midX_base durch eine Zwischen-Bar läuft. Falls ja, in kleinen Schritten
+      // ausweichen — Range bleibt zwischen X_from und X_to (mit etwas Slack).
+      const y_low_avoid = Math.min(midY_A, midY_B);
+      const y_high_avoid = Math.max(midY_A, midY_B);
+      if (y_high_avoid - y_low_avoid > ROW_H * 1.5 && obstacleHit(midX_base, y_low_avoid, y_high_avoid)) {
+        const xMin = Math.min(X_from, X_to) - 30;
+        const xMax = Math.max(X_from, X_to) + 30;
+        for (let delta = 6; delta <= 120; delta += 6) {
+          const candA = midX_base + delta, candB = midX_base - delta;
+          if (candA <= xMax && !obstacleHit(candA, y_low_avoid, y_high_avoid)) { midX_base = candA; break; }
+          if (candB >= xMin && !obstacleHit(candB, y_low_avoid, y_high_avoid)) { midX_base = candB; break; }
+        }
+      }
       // Lane-Offset bei kollidierenden vertikalen Stub-Linien.
       const y_low = Math.min(midY_A, midY_B);
       const y_high = Math.max(midY_A, midY_B);
@@ -1887,6 +1963,7 @@ function fitToPage() {
   state.wEnd = end;
   setDateInputs(start, end);
   state.fitMode = true;
+  if (typeof savePrefs === 'function') savePrefs();
   applyFit();
 }
 
@@ -2150,6 +2227,8 @@ function processInput(text) {
   showWarnings(warnings, null);
   renderSourcePreview(text, warnings);
   setDateInputs(state.wStart, state.wEnd);
+  // File-spezifische Prefs aus letzter Session anwenden (collapsed Sections, ggf. ppd/Window).
+  if (typeof restoreFileState === 'function') restoreFileState(localStorage.getItem('gantt-lastFile'));
   // render() / applyFit() sind in sich abgesichert — Render-Fehler lassen das alte SVG stehen.
   if (state.fitMode) applyFit();
   else render();
@@ -2360,8 +2439,78 @@ async function restoreDir() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+// Persistenz für UI-Einstellungen. Verzeichnis-Handle ist bereits in IndexedDB,
+// die letzte Datei in localStorage (gantt-lastFile). Hier kommen die Toggles + UI-State dazu.
+const PREF_KEYS = ['chk-autoreload', 'chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical'];
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem('gantt-prefs');
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    for (const k of PREF_KEYS) {
+      if (k in p) { const el = document.getElementById(k); if (el) el.checked = !!p[k]; }
+    }
+    if (typeof p.fitMode === 'boolean') state.fitMode = p.fitMode;
+    if (typeof p.panelLeftW === 'number' && p.panelLeftW > 100 && p.panelLeftW < 800) {
+      const pl = document.getElementById('panel-left');
+      if (pl) pl.style.width = p.panelLeftW + 'px';
+    }
+  } catch { /* corrupt JSON, ignore */ }
+}
+function savePrefs() {
+  // Globale Prefs (UI-Toggles + Splitter + fitMode)
+  try {
+    const p = {};
+    for (const k of PREF_KEYS) { const el = document.getElementById(k); if (el) p[k] = el.checked; }
+    p.fitMode = !!state.fitMode;
+    const pl = document.getElementById('panel-left');
+    if (pl) p.panelLeftW = pl.offsetWidth;
+    localStorage.setItem('gantt-prefs', JSON.stringify(p));
+  } catch { /* quota or disabled, ignore */ }
+  // Pro-Datei-Prefs (collapsed Sections, Zoom-Level, Datumsfenster)
+  saveFilePrefs();
+}
+
+function saveFilePrefs() {
+  const filename = localStorage.getItem('gantt-lastFile');
+  if (!filename || !state.parsed) return;
+  try {
+    const raw = localStorage.getItem('gantt-file-prefs');
+    const dict = raw ? JSON.parse(raw) : {};
+    dict[filename] = {
+      collapsedSections: [...state.collapsedSections],
+      ppd: state.ppd,
+      windowMode: state.windowMode,
+      wStart: state.wStart ? dateToISO(state.wStart) : null,
+      wEnd: state.wEnd ? dateToISO(state.wEnd) : null,
+    };
+    localStorage.setItem('gantt-file-prefs', JSON.stringify(dict));
+  } catch {}
+}
+
+function restoreFileState(filename) {
+  if (!filename || !state.parsed) return;
+  try {
+    const raw = localStorage.getItem('gantt-file-prefs');
+    if (!raw) return;
+    const f = JSON.parse(raw)[filename];
+    if (!f) return;
+    if (Array.isArray(f.collapsedSections)) state.collapsedSections = new Set(f.collapsedSections);
+    if (f.windowMode === 'manual' && f.wStart && f.wEnd) {
+      state.windowMode = 'manual';
+      state.wStart = parseDate(f.wStart);
+      state.wEnd = parseDate(f.wEnd);
+      setDateInputs(state.wStart, state.wEnd);
+    }
+    if (typeof f.ppd === 'number' && f.ppd > 0 && !state.fitMode) {
+      state.ppd = f.ppd;
+    }
+  } catch {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
+  loadPrefs();
   restoreDir();
   startAutoReload();
 
@@ -2387,16 +2536,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('chk-autoreload').addEventListener('change', e => {
     e.target.checked ? startAutoReload() : stopAutoReload();
+    savePrefs();
   });
 
-  document.getElementById('chk-milestones').addEventListener('change', () => render());
-  document.getElementById('chk-notes').addEventListener('change', () => render());
-  document.getElementById('chk-deps').addEventListener('change', () => render());
-  document.getElementById('chk-curved').addEventListener('change', () => render());
-  document.getElementById('chk-critical').addEventListener('change', () => render());
+  for (const id of ['chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical']) {
+    document.getElementById(id).addEventListener('change', () => { savePrefs(); render(); });
+  }
   document.getElementById('btn-zoom-100').addEventListener('click', () => {
     state.fitMode = false;
     state.ppd = BAR_H;
+    savePrefs();
     render();
   });
 
@@ -2405,60 +2554,50 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const it of state.parsed.rawItems) {
       if (it.type === 'section') state.collapsedSections.add(it.name);
     }
+    savePrefs();
     render();
   });
   document.getElementById('btn-expand-all').addEventListener('click', () => {
     state.collapsedSections.clear();
+    savePrefs();
     render();
   });
 
   document.getElementById('svg-wrap').addEventListener('click', e => {
-    // 1. Section-Header → Collapse-Toggle
+    // Section-Header → Collapse-Toggle
     const sec = e.target.closest('[data-section-name]');
     if (sec) {
       const name = sec.getAttribute('data-section-name');
       if (state.collapsedSections.has(name)) state.collapsedSections.delete(name);
       else state.collapsedSections.add(name);
+      savePrefs();
       render();
       return;
     }
-    // 2. Bar/Milestone → Pin-Toggle (Tooltip aus, Highlight bleibt sticky)
-    //    Erneuter Click auf gleichen Bar oder leeren Bereich entpinnt.
+    // Bar/Milestone → Freeze: Tooltip aus, Highlight bleibt sticky.
+    // stopPropagation verhindert, dass der document-Click-Handler direkt wieder auftaut.
     const barEl = e.target.closest('[data-key]');
     if (barEl) {
-      const key = barEl.getAttribute('data-key');
-      if (_pinnedKey === key) {
-        _pinnedKey = null;
-        clearArrowHl();
-      } else {
-        _pinnedKey = key;
-        const selPin = `.dep-arrow[data-from="${CSS.escape(key)}"], .dep-arrow[data-to="${CSS.escape(key)}"]`;
-        setArrowHl([...svgWrap.querySelectorAll(selPin)]);
-      }
+      _frozen = true;
       tip.style.display = 'none';
-      return;
-    }
-    // 3. Klick in leeren SVG-Bereich → entpinnen
-    if (_pinnedKey !== null) {
-      _pinnedKey = null;
-      clearArrowHl();
+      e.stopPropagation();
     }
   });
 
   document.getElementById('date-from').addEventListener('change', e => {
-    if (e.target.value) { state.wStart = parseDate(e.target.value); state.windowMode = 'manual'; render(); }
+    if (e.target.value) { state.wStart = parseDate(e.target.value); state.windowMode = 'manual'; savePrefs(); render(); }
   });
   document.getElementById('date-to').addEventListener('change', e => {
-    if (e.target.value) { state.wEnd = parseDate(e.target.value); state.windowMode = 'manual'; render(); }
+    if (e.target.value) { state.wEnd = parseDate(e.target.value); state.windowMode = 'manual'; savePrefs(); render(); }
   });
 
   document.getElementById('btn-zoom-in').addEventListener('click', () => {
     if (!state.ppd) return;
-    state.fitMode = false; state.ppd = Math.min(200, state.ppd * 1.35); render();
+    state.fitMode = false; state.ppd = Math.min(200, state.ppd * 1.35); savePrefs(); render();
   });
   document.getElementById('btn-zoom-out').addEventListener('click', () => {
     if (!state.ppd) return;
-    state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); render();
+    state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); savePrefs(); render();
   });
   document.getElementById('btn-fit-page').addEventListener('click', fitToPage);
 
@@ -2519,6 +2658,7 @@ document.addEventListener('DOMContentLoaded', () => {
     splitter.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    savePrefs();
   });
 
   // ── Tooltip ──────────────────────────────────────────────────────────────────
@@ -2533,17 +2673,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Hover-Highlighting für Dependency-Pfeile (UI-Feature, kein PlantUML-Konzept).
   // — Hover auf Pfeil:  diesen Pfeil hervorheben + Tooltip "From → To" (Form).
-  // — Hover auf Bar/Milestone: alle ein- und abgehenden Pfeile hervorheben.
-  // — Click auf Bar/Milestone: Pin-Modus — Tooltip aus, Highlight bleibt sticky.
-  //   Erneuter Click oder Click in leeren Bereich entpinnt.
+  // — Hover auf Bar/Milestone: alle ein- und abgehenden Pfeile hervorheben + Tooltip.
+  // — Klick auf Bar/Milestone:  Freeze-Modus an — Tooltip aus, Highlight bleibt sticky.
+  //   Klick irgendwo sonst:     Freeze aus → nächster Hover zeigt wieder Tooltip+Highlight.
   let _hlArrows = [];
-  let _pinnedKey = null;
+  let _frozen = false;
+  let _hl2 = null;
   function clearArrowHl() {
     for (const el of _hlArrows) el.classList.remove('hl');
     _hlArrows = [];
+    if (_hl2) { _hl2.classList.remove('hl2'); _hl2 = null; }
   }
-  // Wird von render() aufgerufen, damit Pin/Highlights nicht über Re-Renders stale werden.
-  window.__resetDepHover = () => { _pinnedKey = null; _hlArrows = []; };
+  function setHl2(el) {
+    if (_hl2 === el) return;
+    if (_hl2) _hl2.classList.remove('hl2');
+    _hl2 = el;
+    if (el) el.classList.add('hl2');
+  }
+  // Wird von render() aufgerufen, damit Highlights nicht über Re-Renders stale werden.
+  window.__resetDepHover = () => {
+    _hlArrows = [];
+    _frozen = false;
+    _hl2 = null;
+  };
   function setArrowHl(arr) {
     if (arr.length === _hlArrows.length && arr.every((el, i) => el === _hlArrows[i])) return;
     clearArrowHl();
@@ -2556,9 +2708,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   svgWrap.addEventListener('mousemove', e => {
-    // Pin-Modus: Tooltip + Hover-Highlights komplett aus, sticky Highlight bleibt.
-    if (_pinnedKey !== null) {
-      tip.style.display = 'none';
+    // Freeze-Modus: Tooltip aus, Sticky-Highlight bleibt. Hover über eine bereits
+    // hervorgehobene Linie markiert sie zusätzlich (sekundäre Farbe) — andere Linien
+    // bleiben unverändert.
+    if (_frozen) {
+      const arrow = e.target.closest('.dep-arrow');
+      setHl2(arrow && _hlArrows.includes(arrow) ? arrow : null);
       return;
     }
     // (a) Hover auf Dependency-Pfeil → Tooltip + Highlight
@@ -2684,7 +2839,21 @@ document.addEventListener('DOMContentLoaded', () => {
     tip.style.left = lx + 'px';
     tip.style.top  = ly + 'px';
   });
-  svgWrap.addEventListener('mouseleave', () => { tip.style.display = 'none'; clearArrowHl(); });
+  svgWrap.addEventListener('mouseleave', () => {
+    // Beim Verlassen Tooltip + Highlight nur räumen, wenn NICHT eingefroren.
+    if (_frozen) return;
+    tip.style.display = 'none';
+    clearArrowHl();
+  });
+
+  // Klick irgendwo (außer auf eine Bar/Milestone — die hat stopPropagation) → Freeze aufheben.
+  // Highlight wird beim nächsten Hover ersetzt.
+  document.addEventListener('click', () => {
+    if (_frozen) {
+      _frozen = false;
+      clearArrowHl();
+    }
+  });
 
   window.addEventListener('resize', () => {
     if (state.fitMode) applyFit();
