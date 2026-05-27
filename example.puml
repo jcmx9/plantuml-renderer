@@ -27,8 +27,8 @@ end note
 [API endpoints]    as [api]    starts at [spec]'s end - 2 days and lasts 21 days
 [Auth middleware]  as [middle] starts at [spec]'s end and lasts 5 days
 [Frontend wiring]  as [fe]     starts at [api]'s end and lasts 6 days
-[Migration script] as [mig]    starts at [api]'s start + 2 days and lasts 4 days
-[Security audit]   as [sec]    starts at [middle]'s end + 1 day and lasts 3 days
+[Migration script] as [mig]    starts at [api]'s start + 2 working days and lasts 4 days
+[Security audit]   as [sec]    starts at [middle]'s end + 1 working day and lasts 3 days
 [Hardening window] as [hw]     starts 2026-06-22 and ends 2026-06-26
 [Doc draft]        as [doc]    starts at [api]'s end and ends 2026-07-03
 
