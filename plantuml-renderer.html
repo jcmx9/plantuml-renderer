@@ -131,7 +131,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.50</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.51</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1583,6 +1583,24 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     const itemByName = {};
     for (const it of items) if (it.name) itemByName[it.name] = it;
     const ARW = 6; // arrowhead size
+
+    // Lane-Routing für Kollisionsvermeidung: Pfeile mit überlappendem Y-Bereich UND
+    // benachbartem midX bekommen je einen kleinen X-Offset (4 px pro Lane). Damit
+    // überlagern sich vertikale Stub-Linien nicht mehr.
+    const lanes = [];
+    const LANE_PX = 4;
+    function assignLane(y_low, y_high, midX_base) {
+      for (let i = 0; i < lanes.length; i++) {
+        const L = lanes[i];
+        if (L.y_low < y_high && y_low < L.y_high && Math.abs(L.midX_base - midX_base) < 10) {
+          L.count++;
+          return L.count - 1;
+        }
+      }
+      lanes.push({ y_low, y_high, midX_base, count: 1 });
+      return 0;
+    }
+
     for (const dep of items.filter(i => i.type === 'dep')) {
       const rA = rowMap[dep.from], rB = rowMap[dep.to];
       if (!rA || !rB) continue;
@@ -1633,7 +1651,12 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const stub = 8;
       const dir = X_to >= X_from ? 1 : -1;
       const gap = Math.abs(X_to - X_from);
-      const midX = gap > 2 * stub ? X_from + dir * (gap / 2) : X_from + dir * stub;
+      const midX_base = gap > 2 * stub ? X_from + dir * (gap / 2) : X_from + dir * stub;
+      // Lane-Offset bei kollidierenden vertikalen Stub-Linien.
+      const y_low = Math.min(midY_A, midY_B);
+      const y_high = Math.max(midY_A, midY_B);
+      const laneIdx = assignLane(y_low, y_high, midX_base);
+      const midX = midX_base + laneIdx * LANE_PX * dir;
       // Pfeilspitze 2px vor dem Anker des Nachfolgers, damit sie nicht im Bar verschwindet.
       const arrowTipX = X_to - dir * 2;
       const path = `M ${X_from} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
