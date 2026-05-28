@@ -130,9 +130,13 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 .dep-arrow.hl path { stroke: #d97706; stroke-width: 2.2; }
 .dep-arrow.hl polygon { fill: #d97706; stroke: #d97706; stroke-width: 1.5; stroke-linejoin: miter; }
 /* Zweite Stufe: im Freeze-Modus Hover über eine bereits hervorgehobene Linie.
-   Komplementär zu Amber → kräftiges Cyan/Türkis; weit weg von Section-Blau. */
+   Komplementär zu Amber → kräftiges Cyan/Türkis; weit weg von Section-Blau.
+   Markiert zusätzlich die Bars/Milestones an den Enden der h2-Linie, damit
+   man im Pin-Modus sieht, welche Aufgaben durch die Verbindung verknüpft sind. */
 .dep-arrow.hl2 path { stroke: #00acc1; stroke-width: 3; }
 .dep-arrow.hl2 polygon { fill: #00acc1; stroke: #00acc1; stroke-width: 2; stroke-linejoin: miter; }
+[data-key].hl2 .bar-shape { stroke: #00acc1; stroke-width: 2.5; }
+[data-key].hl2 .ms-shape  { stroke: #00acc1; stroke-width: 2.5; stroke-linejoin: miter; }
 </style>
 </head>
 <body>
@@ -141,7 +145,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.66</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.67</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1588,7 +1592,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
         const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
         g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
-        g.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
+        g.push(`<rect class="bar-shape" x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
 
         // Progress overlay
         if (r.pct > 0) {
@@ -1650,7 +1654,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const msSuccsAttr = msSuccsStr ? ` data-succs="${esc(msSuccsStr)}"` : '';
         g.push(linkOpen);
         g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}"${noteAttrMS}${msStyle}${msPredsAttr}${msSuccsAttr}>`);
-        g.push(`<polygon points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
+        g.push(`<polygon class="ms-shape" points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
                ` fill="${C.milestone}"/>`);
         if (criticalNodes.has(r.name)) {
           const oz = sz + 3;
@@ -2709,22 +2713,41 @@ document.addEventListener('DOMContentLoaded', () => {
   let _hlArrows = [];
   let _frozen = false;
   let _hl2 = null;
+  let _hl2Bars = [];
+  function clearHl2Bars() {
+    for (const b of _hl2Bars) b.classList.remove('hl2');
+    _hl2Bars = [];
+  }
   function clearArrowHl() {
     for (const el of _hlArrows) el.classList.remove('hl');
     _hlArrows = [];
     if (_hl2) { _hl2.classList.remove('hl2'); _hl2 = null; }
+    clearHl2Bars();
   }
   function setHl2(el) {
     if (_hl2 === el) return;
     if (_hl2) _hl2.classList.remove('hl2');
+    clearHl2Bars();
     _hl2 = el;
-    if (el) el.classList.add('hl2');
+    if (el) {
+      el.classList.add('hl2');
+      // Bars an den Enden des h2-Pfeils mit-aktivieren — im Pin-Modus sieht
+      // man so, welche Aufgaben durch die gehoverte Linie verknüpft sind.
+      const from = el.getAttribute('data-from');
+      const to   = el.getAttribute('data-to');
+      for (const key of [from, to]) {
+        if (!key) continue;
+        const bar = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+        if (bar) { bar.classList.add('hl2'); _hl2Bars.push(bar); }
+      }
+    }
   }
   // Wird von render() aufgerufen, damit Highlights nicht über Re-Renders stale werden.
   window.__resetDepHover = () => {
     _hlArrows = [];
     _frozen = false;
     _hl2 = null;
+    _hl2Bars = [];
   };
   function setArrowHl(arr) {
     if (arr.length === _hlArrows.length && arr.every((el, i) => el === _hlArrows[i])) return;
