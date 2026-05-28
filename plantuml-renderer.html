@@ -145,7 +145,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.67</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.68</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -2712,41 +2712,50 @@ document.addEventListener('DOMContentLoaded', () => {
   //   Klick irgendwo sonst:     Freeze aus → nächster Hover zeigt wieder Tooltip+Highlight.
   let _hlArrows = [];
   let _frozen = false;
-  let _hl2 = null;
+  let _hl2Arrows = [];
   let _hl2Bars = [];
-  function clearHl2Bars() {
+  function clearHl2() {
+    for (const a of _hl2Arrows) a.classList.remove('hl2');
     for (const b of _hl2Bars) b.classList.remove('hl2');
+    _hl2Arrows = [];
     _hl2Bars = [];
   }
   function clearArrowHl() {
     for (const el of _hlArrows) el.classList.remove('hl');
     _hlArrows = [];
-    if (_hl2) { _hl2.classList.remove('hl2'); _hl2 = null; }
-    clearHl2Bars();
+    clearHl2();
   }
-  function setHl2(el) {
-    if (_hl2 === el) return;
-    if (_hl2) _hl2.classList.remove('hl2');
-    clearHl2Bars();
-    _hl2 = el;
-    if (el) {
-      el.classList.add('hl2');
-      // Bars an den Enden des h2-Pfeils mit-aktivieren — im Pin-Modus sieht
-      // man so, welche Aufgaben durch die gehoverte Linie verknüpft sind.
-      const from = el.getAttribute('data-from');
-      const to   = el.getAttribute('data-to');
-      for (const key of [from, to]) {
-        if (!key) continue;
-        const bar = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
-        if (bar) { bar.classList.add('hl2'); _hl2Bars.push(bar); }
-      }
+  // Markiert eine Auswahl von Pfeilen als hl2 und zusätzlich die Bars an
+  // ihren Enden. Identische Auswahl ist No-Op (verhindert DOM-Trash bei jedem
+  // mousemove). Wird im Pin-Modus aus zwei Quellen gespeist:
+  //   (1) Hover über eine gepinnte Linie → nur dieser Pfeil + seine 2 Bars
+  //   (2) Hover über eine verbundene Bar → alle gepinnten Pfeile, die diese
+  //       Bar als from/to haben, + alle Bars an deren Enden
+  function setHl2Arrows(arrows) {
+    const same = arrows.length === _hl2Arrows.length
+      && arrows.every((a, i) => a === _hl2Arrows[i]);
+    if (same) return;
+    clearHl2();
+    if (arrows.length === 0) return;
+    const barKeys = new Set();
+    for (const arr of arrows) {
+      arr.classList.add('hl2');
+      _hl2Arrows.push(arr);
+      const from = arr.getAttribute('data-from');
+      const to   = arr.getAttribute('data-to');
+      if (from) barKeys.add(from);
+      if (to)   barKeys.add(to);
+    }
+    for (const key of barKeys) {
+      const bar = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+      if (bar) { bar.classList.add('hl2'); _hl2Bars.push(bar); }
     }
   }
   // Wird von render() aufgerufen, damit Highlights nicht über Re-Renders stale werden.
   window.__resetDepHover = () => {
     _hlArrows = [];
     _frozen = false;
-    _hl2 = null;
+    _hl2Arrows = [];
     _hl2Bars = [];
   };
   function setArrowHl(arr) {
@@ -2761,12 +2770,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   svgWrap.addEventListener('mousemove', e => {
-    // Freeze-Modus: Tooltip aus, Sticky-Highlight bleibt. Hover über eine bereits
-    // hervorgehobene Linie markiert sie zusätzlich (sekundäre Farbe) — andere Linien
-    // bleiben unverändert.
+    // Freeze-Modus: Tooltip aus, Sticky-Highlight bleibt. Hl2 (Türkis) wird
+    // aktiviert, wenn (a) eine bereits gepinnte Linie ODER (b) eine der mit
+    // ihr verbundenen Aufgaben/Milestones gehovert wird. Bei (b) werden alle
+    // gepinnten Linien hl2, deren from/to dieser Bar entspricht, plus alle
+    // Bars an deren Enden.
     if (_frozen) {
       const arrow = e.target.closest('.dep-arrow');
-      setHl2(arrow && _hlArrows.includes(arrow) ? arrow : null);
+      if (arrow && _hlArrows.includes(arrow)) {
+        setHl2Arrows([arrow]);
+        return;
+      }
+      const bar = e.target.closest('[data-key]');
+      if (bar) {
+        const key = bar.getAttribute('data-key');
+        const matches = _hlArrows.filter(a =>
+          a.getAttribute('data-from') === key || a.getAttribute('data-to') === key
+        );
+        setHl2Arrows(matches);
+        return;
+      }
+      setHl2Arrows([]);
       return;
     }
     // (a) Hover auf Dependency-Pfeil → Tooltip + Highlight
