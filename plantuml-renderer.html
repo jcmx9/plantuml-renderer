@@ -141,7 +141,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.64</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.65</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1020,19 +1020,18 @@ function computeCriticalPath(rawItems) {
     return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
   }
 
-  // projectEnd = spätestes EF unter den HARD-EDGE-verbundenen Nodes (afterTask).
-  // Soft-only-verbundene Items (dep-Pfeile, End-Anchor, implicit-temporal) sollen
-  // projectEnd NICHT treiben — sonst zieht ein isolated-aber-soft-verbundener Task
-  // mit spätem Datum die Slack der echten Hard-Chain ins Negative.
+  // Multi-Sink-CPM. ES/EF kommen aus den bereits resolveten Item-Daten
+  // (kein echter Forward-Pass), darum würde ein einzelner globaler projectEnd
+  // zu falschen Slacks führen: ein Sink mit spätem absoluten End-Datum
+  // (z. B. `[doc] ends 2026-07-03`) zieht die Slack aller anderen Endketten
+  // hoch und maskiert die offensichtliche Hauptkette. Daher: jeder Sink
+  // bekommt `LF = EF`, sodass jede Hard-FS-Kette zu einem Sink als kritisch
+  // angezeigt wird.
   const hardConnected = new Set();
   for (const key of hardEdges) {
     const [hcFrom, hcTo] = key.split('→');
     hardConnected.add(hcFrom); hardConnected.add(hcTo);
   }
-  const peScope = [...names].filter(n => hardConnected.has(n));
-  const peSource = peScope.length > 0 ? peScope : names;
-  let projectEnd = EF[peSource[0]];
-  for (const n of peSource) if (EF[n] > projectEnd) projectEnd = EF[n];
   // Lag pro Edge in Kalendertagen. Nur hard edges (afterTask) verschieben
   // den Nachfolger tatsächlich; soft edges (dep-Pfeile, implizit-temporal)
   // gelten als FS mit lag 0 — der Nachfolger reagiert nicht auf eine
@@ -1055,28 +1054,38 @@ function computeCriticalPath(rawItems) {
   const LF = {}, LS = {};
   for (let i = topo.length - 1; i >= 0; i--) {
     const n = topo[i];
-    // LF[n] = min(LS[s] − lag(n,s)) **nur über hard edges**. Soft edges (dep, implicit-
-    // temporal) verschieben den Vorgänger nicht, sind nur visuelle Reihenfolge — wenn
-    // ein Task nur soft successors hat (z. B. soft edge zu einem isolated Task), bekommt
-    // er den vollen Puffer bis projectEnd. Sonst hätten soft edges zu isolated Tasks
-    // die CP-Slack-Berechnung der hard chain zerstört.
+    // LF[n] = min(LS[s] − lag(n,s)) über **hard FS-Edges**. SS-Edges
+    // (`afterWhat==='start'`) bestimmen nicht das Ende des Predecessors —
+    // sie sind eine Start-Start-Kopplung und gehören nicht in die FS-Backward-
+    // Propagation. Soft edges (dep, implicit-temporal) bleiben außen vor,
+    // weil sie kein Datums-Constraint sind.
     let minVal = Infinity;
     for (const s of succs[n]) {
       const key = n + '→' + s;
       if (!hardEdges.has(key)) continue;
+      if (ssEdges.has(key)) continue;
       const lag = edgeLag[key] || 0;
       const val = LS[s] - lag;
       if (val < minVal) minVal = val;
     }
-    LF[n] = minVal === Infinity ? projectEnd : minVal;
+    // Multi-Sink: Knoten ohne hard FS-Successor sind eigene Endpunkte —
+    // LF = EF. Damit ist jede vollständige Hard-Kette zu jedem Sink kritisch
+    // (Slack=0), nicht nur die zum spätesten Sink.
+    LF[n] = minVal === Infinity ? EF[n] : minVal;
     LS[n] = LF[n] - dur[n];
   }
 
   const criticalNodes = new Set();
   for (const n of names) {
+    // Kritisch nur, wenn (a) Slack=0 UND (b) der Knoten Teil mindestens einer
+    // hard FS-Kette ist. Soft-only-verbundene Items haben durch Multi-Sink
+    // ebenfalls Slack=0, sollen aber nicht als „kritisch" markiert werden —
+    // ein freistehender Task hat keine echte Plan-Constraint und ist daher
+    // nicht im klassischen Sinn kritisch.
+    if (!hardConnected.has(n)) continue;
     if (Math.abs(LS[n] - ES[n]) < 0.5) criticalNodes.add(n);
   }
-  // Isolated Items: ohne explizite Vorgänger und Nachfolger werden sie aus
+  // Isolated Items: ohne jegliche Vorgänger und Nachfolger werden sie aus
   // criticalNodes entfernt — „kritisch" ist für isoliert stehende Items irreführend.
   const isolatedItems = [];
   if (names.length > 1) {
@@ -1586,8 +1595,9 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         } else {
           const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
           // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
-          // Outer-Label-Text laufen und ihn unleserlich machen.
-          const padX = 3, padY = 2;
+          // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
+          // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
+          const padX = 1, padY = 2;
           g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${tw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
                  ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
@@ -1630,7 +1640,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         {
           const _mlx = mx + sz + 5;
           const _mtw = approxTextW(displayName, FS);
-          const _mpadX = 3, _mpadY = 2;
+          const _mpadX = 1, _mpadY = 2;
           g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
                  ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
