@@ -154,7 +154,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.70</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.71</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1693,7 +1693,10 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       const truncated = (noteText !== firstLine);
       if (truncated) noteText = noteText.slice(0, -1) + '…';
       else if (isMultiline) noteText = noteText + ' …';
+      // data-note + cursor:help → Hover zeigt den vollen Notiztext im Tooltip
+      // (mousemove-Handler matched [data-note] außerhalb einer [data-name]-Gruppe).
       g.push(`<text x="${labelW + tlW + 10}" y="${my}" dy="0.35em"`,
+             ` data-note="${esc(r.note)}" style="cursor:help"`,
              ` fill="${C.note}" font-size="${FS}">${esc(noteText)}</text>`);
     }
   }
