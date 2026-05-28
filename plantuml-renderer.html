@@ -141,7 +141,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.65</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.66</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1277,7 +1277,26 @@ function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function approxTextW(s, fs) { return s.length * fs * 0.58; }
+// Echte Textbreite via Canvas.measureText messen, sobald DOM verfügbar ist.
+// Outer-Label-Hintergründe und labelW-Heuristik nutzen das Ergebnis, damit das
+// Background-Rect tatsächlich nur den Text abdeckt — die alte Heuristik
+// `s.length * fs * 0.58` überschätzt schmalbuchstabige Texte deutlich.
+// Fallback (Node-Smoke-Tests ohne DOM): alte Formel.
+const _measureCanvas = (typeof document !== 'undefined' && document.createElement)
+  ? (() => { try { const c = document.createElement('canvas'); return c.getContext ? c : null; } catch (e) { return null; } })()
+  : null;
+const _measureCtx = _measureCanvas && _measureCanvas.getContext ? _measureCanvas.getContext('2d') : null;
+const _measureCache = new Map();
+function approxTextW(s, fs, weight = 400) {
+  if (!_measureCtx) return s.length * fs * 0.58;
+  const key = `${weight}|${fs}|${s}`;
+  const cached = _measureCache.get(key);
+  if (cached !== undefined) return cached;
+  _measureCtx.font = `${weight} ${fs}px "Source Sans 3", system-ui, sans-serif`;
+  const w = _measureCtx.measureText(s).width;
+  _measureCache.set(key, w);
+  return w;
+}
 
 function effectiveLabelW(items) {
   let max = LBL_MIN;
@@ -1585,8 +1604,9 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         if (ed > totalDays)
           g.push(`<polygon points="${bx+bw},${by} ${bx+bw-7},${by+BAR_H/2} ${bx+bw},${by+BAR_H}" fill="#fff" opacity="0.4"/>`);
 
-        // Label: inside if fits, else right of bar
-        const tw = approxTextW(displayName, FS);
+        // Label: inside if fits, else right of bar. weight=700, weil das Label
+        // bold gerendert wird — die Canvas-Messung muss die gleiche Metrik nutzen.
+        const tw = approxTextW(displayName, FS, 700);
         const labelInside = tw + 10 < bw;
         let labelEndX = bx + bw;
         if (labelInside) {
@@ -1639,7 +1659,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         }
         {
           const _mlx = mx + sz + 5;
-          const _mtw = approxTextW(displayName, FS);
+          const _mtw = approxTextW(displayName, FS, 600);
           const _mpadX = 1, _mpadY = 2;
           g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
