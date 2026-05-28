@@ -87,14 +87,23 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 #panel-right { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 
 #warn-banner {
+  position: relative;
   flex-shrink: 0; display: none; max-height: 120px; overflow-y: auto;
   background: #fff0f0; color: #c0392b; border-bottom: 1px solid #c0392b;
-  padding: 6px 12px; font-size: 12px; line-height: 1.5;
+  padding: 6px 32px 6px 12px; font-size: 12px; line-height: 1.5;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 #warn-banner .warn-fatal { font-weight: 700; }
 #warn-banner .warn-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #warn-banner .warn-more { opacity: 0.7; font-style: italic; }
+#warn-banner .warn-close {
+  position: absolute; top: 4px; right: 6px;
+  width: 20px; height: 20px; line-height: 18px; text-align: center;
+  background: transparent; border: 1px solid #c0392b; border-radius: 3px;
+  color: #c0392b; cursor: pointer; font-size: 14px; font-weight: 700;
+  padding: 0; font-family: inherit;
+}
+#warn-banner .warn-close:hover { background: #c0392b; color: #fff0f0; }
 
 #source-preview {
   display: none; max-height: 220px; overflow: auto;
@@ -145,7 +154,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.69</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.70</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -2072,11 +2081,31 @@ function render() {
     `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
 }
 
+// Dismiss-Flag pro processInput-Lauf: Close-X versteckt das Banner sofort.
+// Beim nächsten processInput-Aufruf (Edit/Reload/Datei-Wechsel) wird das Flag
+// am Anfang zurückgesetzt → Banner erscheint wieder, auch wenn die Warnungen
+// inhaltlich identisch sind. Damit ist „Edit gemacht → Status erneut prüfen"
+// der erwartete Workflow.
+let _warnDismissed = false;
 function showWarnings(warnings, fatalMsg) {
   const b = document.getElementById('warn-banner');
   const hasAny = (warnings && warnings.length > 0) || !!fatalMsg;
   b.replaceChildren();
-  if (!hasAny) { b.style.display = 'none'; return; }
+  if (!hasAny) { b.style.display = 'none'; _warnDismissed = false; return; }
+  if (_warnDismissed) { b.style.display = 'none'; return; }
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'warn-close';
+  closeBtn.type = 'button';
+  closeBtn.title = 'Warnungen und Source-Preview ausblenden (Safe-Mode für Präsentation — erscheinen beim nächsten Edit wieder)';
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => {
+    _warnDismissed = true;
+    b.style.display = 'none';
+    // Safe-Mode: auch die fehlerhafte-Zeilen-Liste im linken Panel ausblenden.
+    const sp = document.getElementById('source-preview');
+    if (sp) sp.style.display = 'none';
+  });
+  b.appendChild(closeBtn);
   if (fatalMsg) {
     const d = document.createElement('div');
     d.className = 'warn-fatal';
@@ -2136,6 +2165,9 @@ function renderSourcePreview(text, warnings) {
 }
 
 function processInput(text) {
+  // Jeder Edit/Reload zeigt Warnungen wieder, auch wenn sie inhaltlich gleich
+  // dem letzten Dismiss sind („Edit gemacht → Status neu prüfen").
+  _warnDismissed = false;
   if (!text.trim()) {
     const svgWrap = document.getElementById('svg-wrap');
     svgWrap.replaceChildren();
