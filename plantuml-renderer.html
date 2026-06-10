@@ -154,7 +154,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.5.71</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.6.0</div>
 
     <div class="section-label">Datei</div>
     <button class="btn btn-secondary" id="btn-pick-dir">Ordner wählen …</button>
@@ -1033,13 +1033,13 @@ function computeCriticalPath(rawItems) {
     return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
   }
 
-  // Multi-Sink-CPM. ES/EF kommen aus den bereits resolveten Item-Daten
-  // (kein echter Forward-Pass), darum würde ein einzelner globaler projectEnd
-  // zu falschen Slacks führen: ein Sink mit spätem absoluten End-Datum
-  // (z. B. `[doc] ends 2026-07-03`) zieht die Slack aller anderen Endketten
-  // hoch und maskiert die offensichtliche Hauptkette. Daher: jeder Sink
-  // bekommt `LF = EF`, sodass jede Hard-FS-Kette zu einem Sink als kritisch
-  // angezeigt wird.
+  // CPM mit Komponenten-Ende. ES/EF kommen aus den bereits resolveten Item-Daten
+  // (kein echter Forward-Pass). Statt eines globalen Projektendes (das ein Sink
+  // mit spätem absoluten End-Datum wie `[doc] ends 2026-07-03` verfälschen würde)
+  // bekommt jede zusammenhängende Hard-Komponente ihr eigenes Ende (spätestes EF).
+  // So wird innerhalb einer Komponente nur die längste Kette kritisch, kürzere
+  // Seitenketten erhalten echten Slack — und isolierte Später-Tasks bilden eine
+  // eigene Komponente und beeinflussen die anderen nicht.
   const hardConnected = new Set();
   for (const key of hardEdges) {
     const [hcFrom, hcTo] = key.split('→');
@@ -1064,6 +1064,39 @@ function computeCriticalPath(rawItems) {
       }
     }
   }
+  // Hard-Komponenten: zusammenhängende Teilgraphen über die (ungerichteten) hard
+  // edges. Der Backward-Pass nutzt pro Komponente EIN gemeinsames Ende
+  // (spätestes EF), statt jeden Sink für sich auf LF=EF zu setzen. Damit bekommen
+  // kürzere Seitenketten innerhalb derselben Komponente echten positiven Slack
+  // (klassisches CPM), während ein isolierter Task mit spätem Enddatum (z. B.
+  // `[doc] ends 2026-07-03`) seine eigene Komponente bildet und die Slacks der
+  // anderen Ketten NICHT verfälscht — der Grund, warum kein globales Projektende
+  // verwendet wird.
+  const adj = {};
+  for (const n of names) adj[n] = [];
+  for (const key of hardEdges) {
+    const [a, b] = key.split('→');
+    adj[a].push(b); adj[b].push(a);
+  }
+  const compOf = {};
+  let compId = 0;
+  for (const n of names) {
+    if (compOf[n] !== undefined || !hardConnected.has(n)) continue;
+    const stack = [n];
+    compOf[n] = compId;
+    while (stack.length) {
+      const u = stack.pop();
+      for (const v of adj[u]) if (compOf[v] === undefined) { compOf[v] = compId; stack.push(v); }
+    }
+    compId++;
+  }
+  const compEnd = {};
+  for (const n of names) {
+    const c = compOf[n];
+    if (c === undefined) continue;
+    if (compEnd[c] === undefined || EF[n] > compEnd[c]) compEnd[c] = EF[n];
+  }
+
   const LF = {}, LS = {};
   for (let i = topo.length - 1; i >= 0; i--) {
     const n = topo[i];
@@ -1081,20 +1114,20 @@ function computeCriticalPath(rawItems) {
       const val = LS[s] - lag;
       if (val < minVal) minVal = val;
     }
-    // Multi-Sink: Knoten ohne hard FS-Successor sind eigene Endpunkte —
-    // LF = EF. Damit ist jede vollständige Hard-Kette zu jedem Sink kritisch
-    // (Slack=0), nicht nur die zum spätesten Sink.
-    LF[n] = minVal === Infinity ? EF[n] : minVal;
+    // Sink (kein hard FS-Successor): LF = Komponenten-Ende, damit nur die längste
+    // Kette zum spätesten Endpunkt der Komponente kritisch wird; kürzere Sinks
+    // bekommen positiven Slack. Knoten ohne Hard-Komponente fallen auf EF zurück.
+    const sinkLF = compOf[n] !== undefined ? compEnd[compOf[n]] : EF[n];
+    LF[n] = minVal === Infinity ? sinkLF : minVal;
     LS[n] = LF[n] - dur[n];
   }
 
   const criticalNodes = new Set();
   for (const n of names) {
     // Kritisch nur, wenn (a) Slack=0 UND (b) der Knoten Teil mindestens einer
-    // hard FS-Kette ist. Soft-only-verbundene Items haben durch Multi-Sink
-    // ebenfalls Slack=0, sollen aber nicht als „kritisch" markiert werden —
-    // ein freistehender Task hat keine echte Plan-Constraint und ist daher
-    // nicht im klassischen Sinn kritisch.
+    // hard FS-Kette ist. Soft-only-verbundene Items sind nicht hardConnected und
+    // damit nie kritisch — ein freistehender Task hat keine echte Plan-Constraint
+    // und ist daher nicht im klassischen Sinn kritisch.
     if (!hardConnected.has(n)) continue;
     if (Math.abs(LS[n] - ES[n]) < 0.5) criticalNodes.add(n);
   }
@@ -1290,6 +1323,23 @@ function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Nur sichere URL-Schemata für Hyperlinks (`links to [[…]]`) zulassen. esc()
+// schützt hier NICHT: `javascript:alert(1)` braucht keine <>"&-Zeichen und würde
+// in einem SVG <a xlink:href> beim Klick ausgeführt. Erlaubt: http(s), mailto,
+// sowie relative/Fragment-Ziele. Alles andere → null (Link wird nicht gerendert).
+function safeHref(url) {
+  const u = String(url || '').trim();
+  return /^(https?:|mailto:|#|\.{0,2}\/)/i.test(u) ? u : null;
+}
+
+// User-Farben (`is colored in …`) gegen eine strikte Allowlist prüfen, bevor sie
+// in SVG-fill/stroke-Attribute gelangen. Verhindert Attribut-Breakout über " > etc.
+// Erlaubt: #rgb/#rgba/#rrggbb/#rrggbbaa und reine Farbnamen (z. B. GreenYellow).
+function safeColor(c) {
+  const v = String(c || '').trim();
+  return (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]+$/.test(v)) ? v : null;
+}
+
 // Echte Textbreite via Canvas.measureText messen, sobald DOM verfügbar ist.
 // Outer-Label-Hintergründe und labelW-Heuristik nutzen das Ergebnis, damit das
 // Background-Rect tatsächlich nur den Text abdeckt — die alte Heuristik
@@ -1323,6 +1373,9 @@ function effectiveLabelW(items) {
 }
 
 function contrastColor(hex) {
+  // Erwartet #rrggbb. Bei Farbnamen oder Kurzformen (#rgb) ist die Luminanz nicht
+  // bestimmbar — dunkle Default-Textfarbe statt NaN-Vergleich.
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(hex))) return '#1e3a4c';
   const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
   const lin = c => c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
   const L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
@@ -1561,9 +1614,11 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
     // wrap the label in an SVG <a> with target="_blank" and add an underline cue.
     // Overlay-Rows (displays on same row as): kein eigenes Label, Host-Label bleibt.
     const displayName = r.label || r.name;
-    const linkOpen  = r.link ? `<a xlink:href="${esc(r.link)}" target="_blank">` : '';
-    const linkClose = r.link ? `</a>` : '';
-    const linkStyle = r.link ? ' style="cursor:pointer;text-decoration:underline"' : '';
+    // Nur sichere URLs verlinken — javascript:/data:-Ziele werden verworfen (kein <a>).
+    const safeLink  = safeHref(r.link);
+    const linkOpen  = safeLink ? `<a xlink:href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">` : '';
+    const linkClose = safeLink ? `</a>` : '';
+    const linkStyle = safeLink ? ' style="cursor:pointer;text-decoration:underline"' : '';
     if (!r.isOverlay) {
       g.push(linkOpen);
       g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
@@ -1589,11 +1644,11 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
         const bw = (ed2 - sd2) * ppd;
         const by = my - BAR_H / 2;
 
-        const barFill = r.barColor || C.taskBar;
-        const barFg   = r.textColor || contrastColor(barFill);
+        const barFill = safeColor(r.barColor) || C.taskBar;
+        const barFg   = safeColor(r.textColor) || contrastColor(barFill);
 
         const noteAttr = r.note ? ` data-note="${esc(r.note)}"` : '';
-        const barStyle = r.link ? ' style="cursor:pointer"' : '';
+        const barStyle = safeLink ? ' style="cursor:pointer"' : '';
         g.push(linkOpen);
         const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
         const predsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
@@ -1656,7 +1711,7 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
       if (md >= -szDays && md <= totalDays + szDays) {
         const mx = labelW + md * ppd;
         const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
-        const msStyle = r.link ? ' style="cursor:pointer"' : '';
+        const msStyle = safeLink ? ' style="cursor:pointer"' : '';
         const msPredsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
         const msSuccsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
         const msPredsAttr = msPredsStr ? ` data-preds="${esc(msPredsStr)}"` : '';
@@ -1977,7 +2032,8 @@ function autoWindow(items) {
 }
 
 function autoZoom(wStart, wEnd, items) {
-  const w = document.getElementById('svg-wrap').clientWidth || 900;
+  const wrapEl = document.getElementById('svg-wrap');
+  const w = (wrapEl && wrapEl.clientWidth) || 900;
   const days = daysBetween(wStart, wEnd);
   const labelW = effectiveLabelW(items || []);
   // Note-Spalte einbeziehen — sonst landet sie außerhalb des sichtbaren Bereichs (Bug bis v26.5.42).
@@ -2402,7 +2458,7 @@ async function exportPDF() {
   const svgStr = new XMLSerializer().serializeToString(clone);
   const win = window.open('', '_blank');
   if (!win) { showWarnings([], 'Popup wurde vom Browser blockiert. Bitte Popups für diese Seite erlauben.'); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title || 'Gantt'}</title><style>@page{size:A4 landscape;margin:5mm}*{margin:0;padding:0}body{width:287mm;height:200mm;overflow:hidden}${fontCSS}</style></head><body>${svgStr}<script>window.print()<\/script></body></html>`);
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title) || 'Gantt'}</title><style>@page{size:A4 landscape;margin:5mm}*{margin:0;padding:0}body{width:287mm;height:200mm;overflow:hidden}${fontCSS}</style></head><body>${svgStr}<script>window.print()<\/script></body></html>`);
   win.document.close();
 }
 
