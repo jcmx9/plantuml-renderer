@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.5.71** (2026-05-28) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.6.0** (2026-06-10) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -35,6 +35,7 @@ plantuml-renderer.html   ← die einzige Datei
 - **Datums-Filter** (Von / Bis) als manuelle Override; "Auto" resettet auf autoWindow + skaliert auf Browser-Breite (sticky, neu fitten bei Panel-Collapse, Splitter-Drag, Window-Resize).
 - **Zoom** per Buttons (+/−) oder Strg+Mausrad (Cursor-fokussiert).
 - **Tooltips** auf Bars/Milestones/Notes (XSS-sicher via DOM-API). Bei Tasks: Start, Ende, Dauer (Tage/Wochen), Fortschritt (`is N% completed > 0`), direkte Vorgänger und Nachfolger (mit Anzeige-Labels aus `[Display] as [alias]`). Bei Milestones: Datum + Vorgänger/Nachfolger. Notiz-Text erscheint auch dann im Hover-Tooltip, wenn der „Notizen anzeigen"-Toggle aus ist.
+- **Interaktives Hervorheben:** Hover über eine Bar/Milestone hebt alle ein- und abgehenden Abhängigkeitspfeile hervor (Amber); Hover über einen Pfeil hebt die Linie hervor (Türkis). Ein Klick friert die Auswahl ein (**Pin-Modus**) — der Tooltip ist dann unterdrückt; ein zweiter Klick oder `ESC` löst den Pin wieder.
 - **Toggles:** Meilensteine, Notizen, Abhängigkeiten, Kritischer Pfad, Auto-Reload.
 - **Ansicht-Buttons:** `100%` (fixer Zoom auf 14 px/Tag, für reproduzierbaren Export) und `Auto` (sticky Resize-Fit + Datums-Fenster auf alle Tasks).
 
