@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.6.0** (2026-06-10) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.6.1** (2026-06-11) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -20,7 +20,7 @@ plantuml-renderer.html   ← die einzige Datei
 
 ### Visualisierung
 
-- **Kritischer Pfad** (CPM, Slack=0) per Toggle: rote Outline um kritische Bars/Milestones, rote Kanten auf den Pfeilen entlang der Kette. Manuelle Bar-Farben bleiben unangetastet (Outline-Frame außerhalb des Balkens). Backward-Pass ist **Lag-aware** (Offsets in `+ N days` propagieren Slack korrekt) und unterscheidet **hard edges** (`afterTask`, verschieben den Nachfolger) von **soft edges** (`->`-Pfeile, nur logische Reihenfolge). SS-Beziehungen (`at [Y]'s start + N`) werden korrekt als Parallel-Beziehung behandelt.
+- **Kritischer Pfad** (CPM, Slack=0) per Toggle: rote Outline um kritische Bars/Milestones, rote Kanten auf den Pfeilen entlang der Kette. Manuelle Bar-Farben bleiben unangetastet (Outline-Frame außerhalb des Balkens). Backward-Pass ist **Lag-aware** (Offsets in `+ N days` propagieren Slack korrekt) und unterscheidet **hard edges** (`afterTask`, verschieben den Nachfolger) von **soft edges** (`->`-Pfeile, nur logische Reihenfolge). SS-Beziehungen (`at [Y]'s start + N`) werden korrekt als Parallel-Beziehung behandelt. Pro zusammenhängender Abhängigkeitskomponente wird nur die längste (slack-freie) Kette markiert — kürzere Seitenketten und isolierte Tasks mit spätem Enddatum bleiben unmarkiert.
 - **Zeitachse adaptiv:** Year / Quarter / Month / KW / Datum / Projekttag / Wochentag je nach Zoomstufe. Das Year-Label wird bei breiten Year-Ticks alle ~500 px wiederholt, damit es bei horizontalem Scrollen immer ablesbar bleibt.
 - **100%-Zoom-Button:** setzt die Skala einmalig auf `BAR_H` px/Tag (= 14) — konstanter Wert, unabhängig von Datums-Filter oder Browser-Breite. Für reproduzierbaren Export: gleiche `.puml` + gleicher Datums-Filter + 100%-Zoom → identischer Output.
 - **Sticky-Header & Sticky-Label-Spalte** beim Scrollen.

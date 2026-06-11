@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.6.0** (2026-06-10) · German version: [README.md](README.md)
+> Current version: **v26.6.1** (2026-06-11) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -18,7 +18,7 @@ plantuml-renderer.html   ← the only file
 - **Source preview** panel highlights faulty lines in red, opens automatically on problems.
 
 ### Visualisation
-- **Critical path** (CPM, slack = 0) toggle: red outline around critical bars/milestones, red dependency arrows along the chain. Custom bar colours stay untouched (the outline frame is drawn outside the bar). The backward pass is **lag-aware** (`+ N days` offsets propagate slack correctly) and distinguishes **hard edges** (`afterTask`, predecessor's shift propagates) from **soft edges** (`->` arrows, logical ordering only). SS-relationships (`at [Y]'s start + N`) are treated correctly as parallel.
+- **Critical path** (CPM, slack = 0) toggle: red outline around critical bars/milestones, red dependency arrows along the chain. Custom bar colours stay untouched (the outline frame is drawn outside the bar). The backward pass is **lag-aware** (`+ N days` offsets propagate slack correctly) and distinguishes **hard edges** (`afterTask`, predecessor's shift propagates) from **soft edges** (`->` arrows, logical ordering only). SS-relationships (`at [Y]'s start + N`) are treated correctly as parallel. Within each connected dependency component only the longest (slack-free) chain is marked — shorter side chains and isolated tasks with a late end date stay unmarked.
 - **Adaptive time scale:** Year / Quarter / Month / ISO week / Date / Project day / Day-of-week depending on zoom. The year label is repeated every ~500 px so it remains readable while scrolling horizontally.
 - **100 % zoom button:** sets the scale to `BAR_H` px/day (= 14) once — a constant value, independent of the date filter or browser width. For reproducible export: same `.puml` + same date filter + 100 % zoom → identical output.
 - **Sticky header & label column** during scroll.
