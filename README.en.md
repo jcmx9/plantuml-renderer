@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.10.0** (2026-10-26) · German version: [README.md](README.md)
+> Current version: **v26.10.1** (2026-10-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -83,7 +83,17 @@ git pull
 
 ### Alternative: direct download
 
-Grab the latest release asset (`plantuml-renderer.html`) from [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) — no other files needed.
+Grab the latest release asset (`plantuml-renderer.html`) from [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) — no other files needed. Direct link to the current file:
+
+```bash
+curl -fLO https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html
+```
+
+```powershell
+Invoke-WebRequest https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html -OutFile plantuml-renderer.html
+```
+
+> **Caution:** Do not save GitHub's file view (`github.com/…/blob/main/plantuml-renderer.html`) via "Save page as" — that stores the GitHub web page (several MB, full of `<link rel="dns-prefetch">`/`modulepreload` elements) instead of the renderer. Opened locally, it pulls in loads of GitHub resources and ends up in *"Whoa there! You have triggered an abuse detection mechanism."* The real file is about 160 KB and starts with `<!DOCTYPE html>` / `<html lang="de">`.
 
 ---
 
@@ -122,6 +132,111 @@ Advantages:
 2. Click **"Choose folder"** → select a directory containing `.puml` files.
 3. Pick a file from the dropdown.
 4. Edit the `.puml` file in your editor of choice (VSCodium, VSCode, Vim, …) and save → the app re-renders within 1 s.
+
+---
+
+## Quick reference
+
+### Required frame
+
+```puml
+@startgantt
+title Project name
+Project starts 2026-01-01
+
+@endgantt
+```
+
+### Non-working days
+
+```puml
+saturday are closed
+sunday are closed
+```
+
+### Tasks
+
+| Keyword | Example |
+|---|---|
+| Absolute start + duration | `[Name] starts 2026-01-05 and lasts 5 days` |
+| Absolute start + end | `[Name] starts 2026-01-05 and ends 2026-01-10` |
+| Duration only (from `Project starts`) | `[Name] lasts 3 days` |
+| Relative to predecessor | `[B] starts at [A]'s end and lasts 2 days` |
+| With offset | `[B] starts at [A]'s end + 2 days and lasts 5 days` |
+| Direct succession | `then [Name] lasts 3 days` |
+| Alias (reference key) | `[Long name] as [alias] lasts 1 week` |
+
+> `lasts` and `requires` are synonyms.
+
+### Milestones
+
+```puml
+[M] happens 2026-06-30
+[M] happens at [Task]'s end
+[M] happens at [Task]'s end + 5 days
+[M] happens on 3 days after [Task]'s end
+```
+
+### Dependency arrows
+
+```puml
+[A] -> [B]
+```
+
+Draws a visual arrow; does **not** shift any date. For a real scheduling dependency use `starts at [A]'s end`.
+
+### Modifiers
+
+```puml
+[Task] is colored in #2980b9
+[Task] is colored in #2980b9/white
+[Task] is 75% completed
+```
+
+### Structure & comments
+
+```puml
+-- Phase 1 --
+-- Detail [2] --
+' Single-line comment
+/' Block
+   comment '/
+```
+
+### Notes
+
+```puml
+[Task] lasts 3 days
+note bottom
+First line.
+Second line.
+end note
+```
+
+### Minimal example
+
+```puml
+@startgantt
+title Sprint Q3
+Project starts 2026-07-01
+saturday are closed
+sunday are closed
+
+-- Planning --
+[Kickoff]     as [ko]  lasts 1 day
+[Tech spec]   as [ts]  starts at [ko]'s end and lasts 3 days
+
+-- Implementation --
+[Backend API] as [api] starts at [ts]'s end and lasts 10 days
+[Frontend]    as [fe]  starts at [ts]'s end and lasts 8 days
+
+[api] is 50% completed
+[api] -> [fe]
+
+[Acceptance] happens at [api]'s end
+
+@endgantt
+```
 
 ---
 

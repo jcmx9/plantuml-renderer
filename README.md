@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.10.0** (2026-10-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.10.1** (2026-10-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -88,7 +88,17 @@ git pull
 
 ### Alternative: Direkt-Download
 
-Letztes Release-Asset (`plantuml-renderer.html`) von [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) herunterladen — keine weiteren Dateien nötig.
+Letztes Release-Asset (`plantuml-renderer.html`) von [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) herunterladen — keine weiteren Dateien nötig. Direkter Link auf die jeweils aktuelle Datei:
+
+```bash
+curl -fLO https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html
+```
+
+```powershell
+Invoke-WebRequest https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html -OutFile plantuml-renderer.html
+```
+
+> **Achtung:** Nicht die GitHub-Ansicht der Datei (`github.com/…/blob/main/plantuml-renderer.html`) per „Seite speichern unter" sichern — das speichert die GitHub-Webseite (mehrere MB, voller `<link rel="dns-prefetch">`/`modulepreload`-Elemente) statt des Renderers. Lokal geöffnet lädt sie massenhaft GitHub-Ressourcen nach und endet in *„Whoa there! You have triggered an abuse detection mechanism."* Die echte Datei ist ca. 160 KB groß und beginnt mit `<!DOCTYPE html>` / `<html lang="de">`.
 
 ---
 

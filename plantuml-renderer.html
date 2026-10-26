@@ -161,7 +161,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.0</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.1</div>
 
     <div class="section-label io-ctrl">Datei</div>
     <button class="btn btn-secondary io-ctrl" id="btn-pick-dir">Ordner wählen …</button>
@@ -1468,6 +1468,16 @@ function truncateToWidth(text, maxW, fs, weight = 400) {
   return t + '…';
 }
 
+// Außen-Label (rechts neben Bar/Meilenstein) auf den Platz bis zum rechten Timeline-Rand
+// kürzen — relevant bei manuellem Zeitfenster; das Auto-Fenster macht selbst Platz
+// (extendForOuterLabels). null, wenn nicht einmal „X…" passt: dann lieber kein Label als
+// eines, das über den Rand ragt. Den vollen Namen zeigt der Tooltip (data-name).
+function fitOuterLabel(text, maxW, fs, weight) {
+  if (approxTextW(text, fs, weight) <= maxW) return text;
+  const t = truncateToWidth(text, maxW, fs, weight);
+  return approxTextW(t, fs, weight) <= maxW ? t : null;
+}
+
 // Gruppiert `[X] displays on same row as [Y]`-Items unter ihrem Host `Y` — liefert eine
 // Map von Host-Referenz (Name ODER Label von Y, wie im sameRowAs-Feld verwendet) auf die
 // Liste der Overlay-Labels. Gemeinsam genutzt von effectiveLabelW (Spaltenbreite) und
@@ -1831,14 +1841,18 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
                  ` fill="${barFg}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
         } else {
           const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
-          // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
-          // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
-          // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
-          const padX = 1, padY = 2;
-          g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${tw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
-          g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
-                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
-          labelEndX = lx + tw;
+          const shown = fitOuterLabel(displayName, labelW + tlW - 4 - lx, FS, 700);
+          if (shown) {
+            const sw = approxTextW(shown, FS, 700);
+            // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
+            // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
+            // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
+            const padX = 1, padY = 2;
+            g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${sw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
+            g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
+                   ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(shown)}</text>`);
+            labelEndX = lx + sw;
+          }
         }
 
         // Critical frame zuletzt — umschließt Bar + ggf. outer label
@@ -1874,13 +1888,14 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
           g.push(`<polygon points="${mx},${my-oz} ${mx+oz},${my} ${mx},${my+oz} ${mx-oz},${my}"`,
                  ` fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
         }
-        {
-          const _mlx = mx + sz + 5;
-          const _mtw = approxTextW(displayName, FS, 600);
+        const _mlx = mx + sz + 5;
+        const _mshown = fitOuterLabel(displayName, labelW + tlW - 4 - _mlx, FS, 600);
+        if (_mshown) {
+          const _mtw = approxTextW(_mshown, FS, 600);
           const _mpadX = 1, _mpadY = 2;
           g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
-                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(_mshown)}</text>`);
         }
         g.push(`</g>`);
         g.push(linkClose);
@@ -2186,6 +2201,35 @@ function autoWindow(items) {
   return { start: addDays(lo, -7), end: addDays(hi, 14) };
 }
 
+// Pixel, die das Label rechts über das Item-Ende hinausragt (0, wenn es in den Balken
+// passt) — spiegelt die Label-Platzierung in buildSVG (Task bold, Meilenstein semibold).
+function outerLabelOverhang(it, ppd) {
+  const name = it.label || it.name || '';
+  if (it.type === 'milestone') return 9 + 5 + approxTextW(name, FS, 600);
+  const tw = approxTextW(name, FS, 700);
+  return tw + 10 < daysBetween(it.start, it.end) * ppd ? 0 : 5 + tw;
+}
+
+// Verlängert das Auto-Fenster nach rechts, bis jedes Außen-Label bei der resultierenden
+// Zoomstufe auf die Timeline passt. Der feste Puffer aus autoWindow ist in Tagen, die
+// Labels sind in Pixeln — bei langen Projekten (kleines ppd) wurden sie sonst am rechten
+// Rand abgeschnitten. Mehr Tage → kleineres ppd → mehr Überhang in Tagen, daher iterativ.
+function extendForOuterLabels(items, start, end, ppdForDays) {
+  let days = daysBetween(start, end);
+  for (let pass = 0; pass < 20; pass++) {
+    const ppd = ppdForDays(days);
+    let need = days;
+    for (const it of items) {
+      const last = it.type === 'milestone' ? it.date : (it.type === 'task' && it.start ? it.end : null);
+      if (!last) continue;
+      need = Math.max(need, Math.ceil(daysBetween(start, last) + (outerLabelOverhang(it, ppd) + 4) / ppd));
+    }
+    if (need <= days) break;
+    days = need;
+  }
+  return addDays(start, days);
+}
+
 function autoZoom(wStart, wEnd, items) {
   const wrapEl = document.getElementById('svg-wrap');
   const w = (wrapEl && wrapEl.clientWidth) || 900;
@@ -2199,23 +2243,29 @@ function autoZoom(wStart, wEnd, items) {
   return Math.min(200, Math.max(0.5, (w - labelW - noteW - 40) / days));
 }
 
-function applyFit() {
-  if (!state.parsed || !state.wStart || !state.wEnd) return;
-  const days = daysBetween(state.wStart, state.wEnd);
+// ppd, mit dem `days` Tage exakt in die Browser-Breite passen (Fit-Modus).
+function fitPpd(days) {
   const showNotes = document.getElementById('chk-notes').checked;
   const noteW = (showNotes && state.parsed.rawItems.some(i => i.note)) ? NOTE_W : 0;
   const labelW = effectiveLabelW(state.parsed.rawItems);
   const wrap = document.getElementById('svg-wrap');
   const avail = (wrap.clientWidth || 900) - labelW - noteW - 16; // 16px Padding-Reserve
   const ppd = days > 0 ? avail / days : 200;
-  state.ppd = Math.min(200, Math.max(0.2, ppd));
+  return Math.min(200, Math.max(0.2, ppd));
+}
+
+function applyFit() {
+  if (!state.parsed || !state.wStart || !state.wEnd) return;
+  state.ppd = fitPpd(daysBetween(state.wStart, state.wEnd));
   render();
 }
 
 function fitToPage() {
   if (!state.parsed) return;
   state.windowMode = 'auto';
-  const { start, end } = autoWindow(state.parsed.rawItems);
+  const win = autoWindow(state.parsed.rawItems);
+  const start = win.start;
+  const end = extendForOuterLabels(state.parsed.rawItems, start, win.end, fitPpd);
   state.wStart = start;
   state.wEnd = end;
   setDateInputs(start, end);
@@ -2231,6 +2281,26 @@ function setDateInputs(s, e) {
 
 function render() {
   if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
+  // Auto-Fenster an den aktuellen Zoom anpassen: nach Zoom-Out (−, Strg+Rad, 100 %, gespeicherter
+  // ppd) bräuchten die Außen-Labels sonst mehr Tage als beim Laden berechnet. Fit-Modus hat sein
+  // Fenster bereits in fitToPage/processInput passend gerechnet.
+  if (state.windowMode === 'auto' && !state.fitMode) {
+    const win = autoWindow(state.parsed.rawItems);
+    state.wStart = win.start;
+    state.wEnd = extendForOuterLabels(state.parsed.rawItems, win.start, win.end, () => state.ppd);
+    setDateInputs(state.wStart, state.wEnd);
+  }
+  // Manuelles Fenster: „Bis" bleibt die Wahl des Users (state.wEnd, Datumsfeld, Prefs); nur die
+  // Anzeige wird verlängert — und nur für Items, die innerhalb von Von/Bis enden. Was über „Bis"
+  // hinausreicht, macht keinen Platz, sein Label wird stattdessen gekürzt (fitOuterLabel).
+  let viewEnd = state.wEnd;
+  if (state.windowMode === 'manual') {
+    const inRange = state.parsed.rawItems.filter(it => {
+      const last = it.type === 'milestone' ? it.date : (it.type === 'task' ? it.end : null);
+      return last && last > state.wStart && last <= state.wEnd;
+    });
+    viewEnd = extendForOuterLabels(inRange, state.wStart, state.wEnd, () => state.ppd);
+  }
   if (window.__resetDepHover) window.__resetDepHover();
   let svg;
   try {
@@ -2242,7 +2312,7 @@ function render() {
     const parsedView = showMS ? state.parsed : { ...state.parsed, rawItems: state.parsed.rawItems.filter(it => it.type !== 'milestone') };
     const cn = showCrit ? state.cp.criticalNodes : new Set();
     const ce = showCrit ? state.cp.criticalEdges : new Set();
-    svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
+    svg = buildSVG(parsedView, state.wStart, viewEnd, state.ppd,
                    state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
                    state.collapsedSections, showNotes, state.parsed.openOverrides, showCurved);
   } catch (e) {
@@ -2291,7 +2361,7 @@ function render() {
     svgWrap.appendChild(stickyLeft);
   }
 
-  const days = daysBetween(state.wStart, state.wEnd);
+  const days = daysBetween(state.wStart, viewEnd);
   const bandLabel = ({year:"Jahr",quarter:"Quartal",month:"Monat",kw:"KW",week:"Woche",day:"Tag",projectday:"Projekttag"})[getBands(state.ppd, days, state.parsed?.projectStart?.getFullYear()===1900).bands.at(-1)];
   document.getElementById('zoom-label').textContent =
     `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
@@ -2518,7 +2588,8 @@ function processInput(text) {
     }
     const win = autoWindow(nextParsed.rawItems);
     nextStart = win.start;
-    nextEnd = win.end;
+    nextEnd = extendForOuterLabels(nextParsed.rawItems, nextStart, win.end,
+      days => autoZoom(win.start, addDays(win.start, days), nextParsed.rawItems));
     nextPpd = autoZoom(nextStart, nextEnd, nextParsed.rawItems);
     // NaN-Date / Invalid Date kaskadiert sonst stumm zu kaputten SVG-Koordinaten — hier explizit abfangen.
     if (!(nextStart instanceof Date) || isNaN(nextStart.getTime()) ||
