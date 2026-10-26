@@ -161,7 +161,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.1</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.2</div>
 
     <div class="section-label io-ctrl">Datei</div>
     <button class="btn btn-secondary io-ctrl" id="btn-pick-dir">Ordner wählen …</button>
@@ -234,7 +234,17 @@ function isRealDate(str) {
 
 function parseDate(str) {
   const [y, m, d] = str.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  // setFullYear statt new Date(y, …): der Konstruktor macht aus Jahr 0–99 sonst 1900–1999.
+  const dt = new Date(2000, 0, 1);
+  dt.setFullYear(y, m - 1, d);
+  return dt;
+}
+
+// Absolutes Enddatum aus `ends DATE`: PlantUML zählt den Endtag mit (Doku: `requires 15 days`
+// ↔ `starts D+0` … `ends D+14`, Nachfolger `starts D+15`). Intern ist `end` exklusiv
+// (= Tag nach dem letzten Balkentag), daher +1.
+function parseEndDate(str) {
+  return addDays(parseDate(str), 1);
 }
 
 function addDays(date, n) {
@@ -660,7 +670,7 @@ function parsePlantUML(text) {
     // Task: [Name] starts DATE and ends DATE
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseDate(m[3]), duration: null, afterTask: null, note: null }); continue;
+      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseEndDate(m[3]), duration: null, afterTask: null, note: null }); continue;
     }
 
     // Task occurs from [M1] to [M2] — Span zwischen zwei Milestones/Tasks
@@ -680,7 +690,7 @@ function parsePlantUML(text) {
     // (Rückwärts: End fest, Start = End − Dauer.)
     if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[2]),
         duration: parseDuration(m[3], m[4]), afterTask: null, note: null, sourceLine: lineNum }); continue;
     }
 
@@ -688,7 +698,7 @@ function parsePlantUML(text) {
     // Doku-Beleg: [Prototype design] ends 2020-07-15
     if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s*$/))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[2]),
         duration: null, afterTask: null, note: null, sourceLine: lineNum }); continue;
     }
 
@@ -778,7 +788,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
       lastTaskName = m[1];
       const sign = m[3] === '-' ? -1 : 1;
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[7]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[7]),
         afterTask: m[2], afterWhat: 'start', offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
         duration: null, note: null }); continue;
     }
@@ -786,7 +796,7 @@ function parsePlantUML(text) {
     // Task: [Name] starts at [Other]'s start and ends DATE
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[3]),
         afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
     }
 
@@ -808,7 +818,7 @@ function parsePlantUML(text) {
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
       lastTaskName = m[1];
       const sign = m[3] === '-' ? -1 : 1;
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[7]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[7]),
         afterTask: m[2], offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
         duration: null, note: null }); continue;
     }
@@ -825,7 +835,7 @@ function parsePlantUML(text) {
     // Task: [Name] starts at [Other]'s end and ends DATE
     if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
       lastTaskName = m[1];
-      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+      push({ type: 'task', name: m[1], start: null, end: parseEndDate(m[3]),
         afterTask: m[2], offset: 0, duration: null, note: null }); continue;
     }
 
@@ -2462,6 +2472,7 @@ function processInput(text) {
     showWarnings([], null);
     renderSourcePreview('', []);
     state.parsed = null;
+    state.rawText = null;  // sonst exportiert „Export HTML" noch das alte Diagramm
     state.cp = { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false };
     return;
   }
@@ -2618,8 +2629,14 @@ function processInput(text) {
   showWarnings(warnings, null);
   renderSourcePreview(text, warnings);
   setDateInputs(state.wStart, state.wEnd);
-  // File-spezifische Prefs aus letzter Session anwenden (collapsed Sections, ggf. ppd/Window).
-  if (typeof restoreFileState === 'function') restoreFileState(localStorage.getItem('gantt-lastFile'));
+  // File-spezifische Prefs (collapsed Sections, ggf. ppd/Window) nur beim Wechsel auf eine
+  // andere Datei anwenden — bei Auto-Reloads derselben Datei bleibt die aktuelle Ansicht.
+  const prefsName = prefsFileName();
+  if (prefsName !== restoredFor) {
+    restoredFor = prefsName;
+    state.collapsedSections = new Set();
+    restoreFileState(prefsName);
+  }
   // render() / applyFit() sind in sich abgesichert — Render-Fehler lassen das alte SVG stehen.
   if (state.fitMode) applyFit();
   else render();
@@ -2661,7 +2678,10 @@ function exportSVG() {
 function exportPNG() {
   const el = visibleSVG();
   if (!el) return;
-  const W = +el.getAttribute('width'), H = +el.getAttribute('height'), S = 4;
+  const W = +el.getAttribute('width'), H = +el.getAttribute('height');
+  // 4×-Supersampling, aber unter den Canvas-Limits des Browsers bleiben (Chrome: ~268 Mio.
+  // Pixel Fläche, 32767 px Kantenlänge) — sonst liefert toBlob still null.
+  const S = Math.max(1, Math.min(4, Math.sqrt(2.6e8 / (W * H)), 32767 / Math.max(W, H)));
   const str = new XMLSerializer().serializeToString(el);
   const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -2672,7 +2692,10 @@ function exportPNG() {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W*S, H*S);
     ctx.scale(S, S); ctx.drawImage(img, 0, 0);
     URL.revokeObjectURL(url);
-    c.toBlob(pb => dl(pb, 'gantt.png'), 'image/png');
+    c.toBlob(pb => {
+      if (pb) dl(pb, 'gantt.png');
+      else showWarnings([], 'PNG-Export fehlgeschlagen: Diagramm ist zu groß für eine Bilddatei — bitte SVG- oder PDF-Export verwenden.');
+    }, 'image/png');
   };
   img.onerror = () => showWarnings([], 'PNG-Export fehlgeschlagen: SVG enthält möglicherweise externe Ressourcen.');
   img.src = url;
@@ -2682,9 +2705,9 @@ let _fontCSS = null;
 
 async function loadEmbeddedFont() {
   if (_fontCSS !== null) return _fontCSS;
-  const cached = await idbGet('fontCSS_v2');
-  if (cached) { _fontCSS = cached; return _fontCSS; }
   try {
+    const cached = await idbGet('fontCSS_v2');
+    if (cached) { _fontCSS = cached; return _fontCSS; }
     const css = await fetch('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap').then(r => r.text());
     const urls = [...css.matchAll(/url\(([^)]+\.woff2[^)]*)\)/g)].map(m => m[1].replace(/['"]/g, ''));
     let result = css;
@@ -2700,7 +2723,7 @@ async function loadEmbeddedFont() {
       result = result.replace(url, `data:font/woff2;base64,${b64}`);
     }
     _fontCSS = result;
-    await idbSet('fontCSS_v2', result);
+    await idbSet('fontCSS_v2', result).catch(() => {});  // Cache ist optional
   } catch(e) {
     _fontCSS = '';
   }
@@ -2711,6 +2734,10 @@ async function exportPDF() {
   const wrap = document.getElementById('svg-wrap');
   const el = wrap.querySelector(':scope > svg');
   if (!el) return;
+  // Popup synchron im Klick öffnen — nach den await-Schritten (IDB, Font-Fetch) ist die
+  // User-Aktivierung abgelaufen und der Popup-Blocker würde greifen.
+  const win = window.open('', '_blank');
+  if (!win) { showWarnings([], 'Popup wurde vom Browser blockiert. Bitte Popups für diese Seite erlauben.'); return; }
   const totalW = +el.getAttribute('width');
   const totalH = +el.getAttribute('height');
   const clone = el.cloneNode(true);
@@ -2722,8 +2749,7 @@ async function exportPDF() {
   const fontCSS = await loadEmbeddedFont();
   const title = (state.parsed && state.parsed.title) || '';
   const svgStr = new XMLSerializer().serializeToString(clone);
-  const win = window.open('', '_blank');
-  if (!win) { showWarnings([], 'Popup wurde vom Browser blockiert. Bitte Popups für diese Seite erlauben.'); return; }
+  if (win.closed) return;
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title) || 'Gantt'}</title><style>@page{size:A4 landscape;margin:5mm}*{margin:0;padding:0}body{width:287mm;height:200mm;overflow:hidden}${fontCSS}</style></head><body>${svgStr}<script>window.print()<\/script></body></html>`);
   win.document.close();
 }
@@ -2753,13 +2779,21 @@ function exportHTML() {
   // keine JS-String-Quotierung — ein rohes `</script` irgendwo im .puml-Text (Kommentar/
   // Notiz/Titel) würde das Script-Tag der exportierten Datei sonst vorzeitig beenden.
   const embeddedJson = JSON.stringify(state.rawText).replace(/</g, '\\u003c');
+  const viewJson = JSON.stringify({
+    collapsedSections: [...state.collapsedSections],
+    ppd: state.ppd,
+    windowMode: state.windowMode,
+    wStart: state.wStart ? dateToISO(state.wStart) : null,
+    wEnd: state.wEnd ? dateToISO(state.wEnd) : null,
+    fitMode: !!state.fitMode,
+  }).replace(/</g, '\\u003c');
   const bodyHTML = document.body.innerHTML.replace(
     placeholder,
     // Funktions-Form: String.replace würde bei einem String als 2. Argument IMMER
     // GetSubstitution ausführen — $&/$`/$' im .puml-Text könnten sonst fremden
     // innerHTML-Inhalt in den Export spleißen. Eine Funktion umgeht das vollständig.
     () => `let EMBEDDED_SOURCE = ${embeddedJson};`
-  );
+  ).replace('let ' + 'EMBEDDED_VIEW = null;', () => `let EMBEDDED_VIEW = ${viewJson};`);
   const html = `<!DOCTYPE html>\n<html lang="de">\n<head>\n${document.head.innerHTML}\n</head>\n<body>\n${bodyHTML}\n</body>\n</html>\n`;
   dl(new Blob([html], { type: 'text/html;charset=utf-8' }), 'gantt-export.html');
 }
@@ -2801,6 +2835,8 @@ async function idbSet(key, val) {
 // Von exportHTML() gesetzter Platzhalter: null im Normalbetrieb, im exportierten
 // File per String-Replace durch den eingebetteten Quelltext ersetzt (siehe exportHTML()).
 let EMBEDDED_SOURCE = null;
+// Ebenso: Ansicht zum Exportzeitpunkt (Fenster, Zoom, eingeklappte Sektionen, Fit-Modus).
+let EMBEDDED_VIEW = null;
 
 let dirHandle = null;
 let currentFileHandle = null;
@@ -2810,14 +2846,27 @@ let autoReloadTimer = null;
 function startAutoReload() {
   if (autoReloadTimer) return;
   autoReloadTimer = setInterval(async () => {
-    if (!currentFileHandle) return;
+    const handle = currentFileHandle;
+    if (!handle) return;
     try {
-      const file = await currentFileHandle.getFile();
+      const file = await handle.getFile();
+      // Während des await auf eine andere Datei gewechselt → dieses Ergebnis verwerfen.
+      if (handle !== currentFileHandle) return;
       if (lastModified !== null && file.lastModified !== lastModified) {
         lastModified = file.lastModified;
-        processInput(await file.text());
+        const text = await file.text();
+        if (handle === currentFileHandle) processInput(text);
       }
-    } catch(e) { console.warn('Auto-Reload Fehler:', e); }
+    } catch(e) {
+      if (handle !== currentFileHandle) return;
+      if (e.name === 'NotFoundError') {
+        currentFileHandle = null;
+        showWarnings([], `Datei „${handle.name}" wurde gelöscht oder umbenannt — bitte neu auswählen.`);
+        if (dirHandle) refreshFileList().catch(() => {});
+      } else {
+        console.warn('Auto-Reload Fehler:', e);
+      }
+    }
   }, 1000);
 }
 
@@ -2855,27 +2904,67 @@ async function restoreDir() {
   try {
     const handle = await idbGet('dirHandle');
     if (!handle) return;
-    if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return;
-    dirHandle = handle;
-    await refreshFileList();
-    const last = localStorage.getItem('gantt-lastFile');
-    const sel = document.getElementById('file-select');
-    if (last && [...sel.options].some(o => o.value === last)) {
-      sel.value = last;
-      currentFileHandle = await dirHandle.getFileHandle(last);
-      await loadCurrentFile();
-    }
+    // requestPermission braucht eine User-Geste — beim Laden nur abfragen. Ist die Freigabe
+    // nach einem Browser-Neustart wieder auf "prompt", per Klick erneut verbinden lassen.
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'prompt') { offerReconnect(handle); return; }
+    if (perm !== 'granted') return;
+    await openDir(handle);
   } catch(e) { /* kein gespeicherter Ordner */ }
 }
 
+function offerReconnect(handle) {
+  const hint = document.getElementById('file-hint');
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-secondary';
+  btn.textContent = `Ordner „${handle.name}" erneut verbinden`;
+  btn.addEventListener('click', async () => {
+    try {
+      if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return;
+      await openDir(handle);
+    } catch(e) { showWarnings([], 'Ordner konnte nicht verbunden werden: ' + e.message); }
+  });
+  hint.replaceChildren(btn);
+}
+
+async function openDir(handle) {
+  dirHandle = handle;
+  await refreshFileList();
+  const last = lsGet('gantt-lastFile');
+  const sel = document.getElementById('file-select');
+  if (last && [...sel.options].some(o => o.value === last)) {
+    sel.value = last;
+    currentFileHandle = await dirHandle.getFileHandle(last);
+    await loadCurrentFile();
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
+
+// localStorage kann werfen (Website-Daten blockiert, file:// mit restriktiven Einstellungen).
+// Im statischen HTML-Export bleibt er ganz außen vor: die Exportdatei teilt sich unter
+// file:// die Origin mit der App und darf deren Prefs weder lesen noch überschreiben.
+function lsGet(key) {
+  if (EMBEDDED_SOURCE !== null) return null;
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function lsSet(key, val) {
+  if (EMBEDDED_SOURCE !== null) return;
+  try { localStorage.setItem(key, val); } catch { /* quota or disabled, ignore */ }
+}
+
+// Datei, für die zuletzt Per-Datei-Prefs angewendet wurden (siehe processInput).
+let restoredFor;
+function prefsFileName() {
+  return lsGet('gantt-lastFile');
+}
 
 // Persistenz für UI-Einstellungen. Verzeichnis-Handle ist bereits in IndexedDB,
 // die letzte Datei in localStorage (gantt-lastFile). Hier kommen die Toggles + UI-State dazu.
 const PREF_KEYS = ['chk-autoreload', 'chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical'];
 function loadPrefs() {
   try {
-    const raw = localStorage.getItem('gantt-prefs');
+    const raw = lsGet('gantt-prefs');
     if (!raw) return;
     const p = JSON.parse(raw);
     for (const k of PREF_KEYS) {
@@ -2896,17 +2985,17 @@ function savePrefs() {
     p.fitMode = !!state.fitMode;
     const pl = document.getElementById('panel-left');
     if (pl) p.panelLeftW = pl.offsetWidth;
-    localStorage.setItem('gantt-prefs', JSON.stringify(p));
+    lsSet('gantt-prefs', JSON.stringify(p));
   } catch { /* quota or disabled, ignore */ }
   // Pro-Datei-Prefs (collapsed Sections, Zoom-Level, Datumsfenster)
   saveFilePrefs();
 }
 
 function saveFilePrefs() {
-  const filename = localStorage.getItem('gantt-lastFile');
+  const filename = prefsFileName();
   if (!filename || !state.parsed) return;
   try {
-    const raw = localStorage.getItem('gantt-file-prefs');
+    const raw = lsGet('gantt-file-prefs');
     const dict = raw ? JSON.parse(raw) : {};
     dict[filename] = {
       collapsedSections: [...state.collapsedSections],
@@ -2915,17 +3004,23 @@ function saveFilePrefs() {
       wStart: state.wStart ? dateToISO(state.wStart) : null,
       wEnd: state.wEnd ? dateToISO(state.wEnd) : null,
     };
-    localStorage.setItem('gantt-file-prefs', JSON.stringify(dict));
+    lsSet('gantt-file-prefs', JSON.stringify(dict));
   } catch {}
 }
 
 function restoreFileState(filename) {
   if (!filename || !state.parsed) return;
   try {
-    const raw = localStorage.getItem('gantt-file-prefs');
+    const raw = lsGet('gantt-file-prefs');
     if (!raw) return;
     const f = JSON.parse(raw)[filename];
-    if (!f) return;
+    if (f) applyViewPrefs(f);
+  } catch {}
+}
+
+// Ansicht aus gespeicherten Prefs bzw. dem im HTML-Export eingebetteten Stand übernehmen.
+function applyViewPrefs(f) {
+  try {
     if (Array.isArray(f.collapsedSections)) state.collapsedSections = new Set(f.collapsedSections);
     if (f.windowMode === 'manual' && f.wStart && f.wEnd) {
       state.windowMode = 'manual';
@@ -2951,7 +3046,12 @@ document.addEventListener('DOMContentLoaded', () => {
       note.textContent = 'Statischer Export — Diagramm fest eingebettet, keine Ordneranbindung';
       firstIoCtrl.parentNode.insertBefore(note, firstIoCtrl);
     }
+    if (EMBEDDED_VIEW) state.fitMode = !!EMBEDDED_VIEW.fitMode;
     processInput(EMBEDDED_SOURCE);
+    if (EMBEDDED_VIEW && state.parsed) {
+      applyViewPrefs(EMBEDDED_VIEW);
+      if (state.fitMode) applyFit(); else render();
+    }
   } else {
     restoreDir();
     startAutoReload();
@@ -2968,8 +3068,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('file-select').addEventListener('change', async e => {
     const name = e.target.value;
     if (!name || !dirHandle) return;
-    localStorage.setItem('gantt-lastFile', name);
-    currentFileHandle = await dirHandle.getFileHandle(name);
+    let handle;
+    try {
+      handle = await dirHandle.getFileHandle(name);
+    } catch (err) {
+      // Datei seit dem Auflisten umbenannt/gelöscht — alte Datei bleibt aktiv, Liste neu einlesen.
+      showWarnings([], `Datei „${name}" nicht gefunden: ${err.message}`);
+      await refreshFileList().catch(() => {});
+      return;
+    }
+    lsSet('gantt-lastFile', name);
+    currentFileHandle = handle;
     // Neue Datei → auto-Modus, sonst würde das alte manuelle Fenster auf das neue Projekt angewandt.
     state.windowMode = 'auto';
     await loadCurrentFile();
@@ -3040,25 +3149,31 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleSection(sec.getAttribute('data-section-name'));
   });
 
+  // Chrome feuert `change` schon während der Jahreseingabe (0002, 0020, 0202 …) — solche
+  // Zwischenstände still ignorieren, statt ein Fenster über Jahrtausende zu rendern.
+  const plausibleWindow = (from, to) =>
+    from.getFullYear() >= 1900 && to.getFullYear() >= 1900 && Math.abs(daysBetween(from, to)) <= MAX_SPAN_DAYS;
   document.getElementById('date-from').addEventListener('change', e => {
     if (!e.target.value) return;
     const d = parseDate(e.target.value);
+    if (!plausibleWindow(d, state.wEnd)) return;
     if (state.wEnd && d >= state.wEnd) {
       showWarnings([], 'Ungültiges Zeitfenster: "Von" muss vor "Bis" liegen.');
       setDateInputs(state.wStart, state.wEnd);
       return;
     }
-    state.wStart = d; state.windowMode = 'manual'; savePrefs(); render();
+    state.wStart = d; state.windowMode = 'manual'; state.fitMode = false; savePrefs(); render();
   });
   document.getElementById('date-to').addEventListener('change', e => {
     if (!e.target.value) return;
     const d = parseDate(e.target.value);
+    if (!plausibleWindow(state.wStart, d)) return;
     if (state.wStart && d <= state.wStart) {
       showWarnings([], 'Ungültiges Zeitfenster: "Bis" muss nach "Von" liegen.');
       setDateInputs(state.wStart, state.wEnd);
       return;
     }
-    state.wEnd = d; state.windowMode = 'manual'; savePrefs(); render();
+    state.wEnd = d; state.windowMode = 'manual'; state.fitMode = false; savePrefs(); render();
   });
 
   document.getElementById('btn-zoom-in').addEventListener('click', () => {
@@ -3244,7 +3359,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       tip.appendChild(document.createTextNode(`Start: ${fmtTipDate(el.dataset.start)}`));
       tip.appendChild(document.createElement('br'));
-      tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
+      // data-end ist exklusiv — angezeigt wird der letzte Balkentag.
+      const lastDay = el.dataset.end > el.dataset.start ? dateToISO(addDays(parseDate(el.dataset.end), -1)) : el.dataset.end;
+      tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(lastDay)}`));
       tip.appendChild(document.createElement('br'));
       // Dauer = Kalender-Span zwischen Start und Ende. Format: "17 Tage: 2 Wochen, 3 Tage" —
       // präzise Aufschlüsselung (keine Rundung), 1 Woche = 7 Tage fest. Bei Dauer < 7 oder
@@ -3427,6 +3544,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Ctrl+Mausrad = Zoom, plain Mausrad = vertikaler Browser-Scroll
+  let wheelSaveTimer = null;
   svgWrap.addEventListener('wheel', e => {
     if (!state.ppd || !e.ctrlKey) return;
     e.preventDefault();
@@ -3439,6 +3557,8 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
     // Scroll so anpassen, dass derselbe Tag unter dem Cursor bleibt
     svgWrap.scrollLeft = cursorDay * newPpd - e.offsetX;
+    clearTimeout(wheelSaveTimer);
+    wheelSaveTimer = setTimeout(savePrefs, 300);
   }, { passive: false });
 });
 </script>
