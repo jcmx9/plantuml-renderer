@@ -1468,6 +1468,16 @@ function truncateToWidth(text, maxW, fs, weight = 400) {
   return t + '…';
 }
 
+// Außen-Label (rechts neben Bar/Meilenstein) auf den Platz bis zum rechten Timeline-Rand
+// kürzen — relevant bei manuellem Zeitfenster; das Auto-Fenster macht selbst Platz
+// (extendForOuterLabels). null, wenn nicht einmal „X…" passt: dann lieber kein Label als
+// eines, das über den Rand ragt. Den vollen Namen zeigt der Tooltip (data-name).
+function fitOuterLabel(text, maxW, fs, weight) {
+  if (approxTextW(text, fs, weight) <= maxW) return text;
+  const t = truncateToWidth(text, maxW, fs, weight);
+  return approxTextW(t, fs, weight) <= maxW ? t : null;
+}
+
 // Gruppiert `[X] displays on same row as [Y]`-Items unter ihrem Host `Y` — liefert eine
 // Map von Host-Referenz (Name ODER Label von Y, wie im sameRowAs-Feld verwendet) auf die
 // Liste der Overlay-Labels. Gemeinsam genutzt von effectiveLabelW (Spaltenbreite) und
@@ -1831,14 +1841,18 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
                  ` fill="${barFg}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
         } else {
           const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
-          // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
-          // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
-          // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
-          const padX = 1, padY = 2;
-          g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${tw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
-          g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
-                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
-          labelEndX = lx + tw;
+          const shown = fitOuterLabel(displayName, labelW + tlW - 4 - lx, FS, 700);
+          if (shown) {
+            const sw = approxTextW(shown, FS, 700);
+            // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
+            // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
+            // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
+            const padX = 1, padY = 2;
+            g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${sw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
+            g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
+                   ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(shown)}</text>`);
+            labelEndX = lx + sw;
+          }
         }
 
         // Critical frame zuletzt — umschließt Bar + ggf. outer label
@@ -1874,13 +1888,14 @@ function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeek
           g.push(`<polygon points="${mx},${my-oz} ${mx+oz},${my} ${mx},${my+oz} ${mx-oz},${my}"`,
                  ` fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
         }
-        {
-          const _mlx = mx + sz + 5;
-          const _mtw = approxTextW(displayName, FS, 600);
+        const _mlx = mx + sz + 5;
+        const _mshown = fitOuterLabel(displayName, labelW + tlW - 4 - _mlx, FS, 600);
+        if (_mshown) {
+          const _mtw = approxTextW(_mshown, FS, 600);
           const _mpadX = 1, _mpadY = 2;
           g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
           g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
-                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(_mshown)}</text>`);
         }
         g.push(`</g>`);
         g.push(linkClose);
@@ -2268,12 +2283,23 @@ function render() {
   if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
   // Auto-Fenster an den aktuellen Zoom anpassen: nach Zoom-Out (−, Strg+Rad, 100 %, gespeicherter
   // ppd) bräuchten die Außen-Labels sonst mehr Tage als beim Laden berechnet. Fit-Modus hat sein
-  // Fenster bereits in fitToPage/processInput passend gerechnet; manuelle Daten bleiben unberührt.
+  // Fenster bereits in fitToPage/processInput passend gerechnet.
   if (state.windowMode === 'auto' && !state.fitMode) {
     const win = autoWindow(state.parsed.rawItems);
     state.wStart = win.start;
     state.wEnd = extendForOuterLabels(state.parsed.rawItems, win.start, win.end, () => state.ppd);
     setDateInputs(state.wStart, state.wEnd);
+  }
+  // Manuelles Fenster: „Bis" bleibt die Wahl des Users (state.wEnd, Datumsfeld, Prefs); nur die
+  // Anzeige wird verlängert — und nur für Items, die innerhalb von Von/Bis enden. Was über „Bis"
+  // hinausreicht, macht keinen Platz, sein Label wird stattdessen gekürzt (fitOuterLabel).
+  let viewEnd = state.wEnd;
+  if (state.windowMode === 'manual') {
+    const inRange = state.parsed.rawItems.filter(it => {
+      const last = it.type === 'milestone' ? it.date : (it.type === 'task' ? it.end : null);
+      return last && last > state.wStart && last <= state.wEnd;
+    });
+    viewEnd = extendForOuterLabels(inRange, state.wStart, state.wEnd, () => state.ppd);
   }
   if (window.__resetDepHover) window.__resetDepHover();
   let svg;
@@ -2286,7 +2312,7 @@ function render() {
     const parsedView = showMS ? state.parsed : { ...state.parsed, rawItems: state.parsed.rawItems.filter(it => it.type !== 'milestone') };
     const cn = showCrit ? state.cp.criticalNodes : new Set();
     const ce = showCrit ? state.cp.criticalEdges : new Set();
-    svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
+    svg = buildSVG(parsedView, state.wStart, viewEnd, state.ppd,
                    state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
                    state.collapsedSections, showNotes, state.parsed.openOverrides, showCurved);
   } catch (e) {
@@ -2335,7 +2361,7 @@ function render() {
     svgWrap.appendChild(stickyLeft);
   }
 
-  const days = daysBetween(state.wStart, state.wEnd);
+  const days = daysBetween(state.wStart, viewEnd);
   const bandLabel = ({year:"Jahr",quarter:"Quartal",month:"Monat",kw:"KW",week:"Woche",day:"Tag",projectday:"Projekttag"})[getBands(state.ppd, days, state.parsed?.projectStart?.getFullYear()===1900).bands.at(-1)];
   document.getElementById('zoom-label').textContent =
     `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
