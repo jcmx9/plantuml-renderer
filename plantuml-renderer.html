@@ -1,0 +1,3375 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlantUML Gantt Renderer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Source Sans 3', system-ui, sans-serif; font-size: 13px; height: 100vh; display: flex; flex-direction: column; background: #eef1f4; overflow: hidden; }
+
+#app { display: flex; flex: 1; overflow: hidden; }
+
+#panel-left {
+  width: 290px; min-width: 160px; max-width: 60%;
+  display: flex; flex-direction: column;
+  background: #fff;
+  padding: 12px; gap: 8px; overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#splitter {
+  width: 5px; min-width: 5px; cursor: col-resize;
+  background: #d0d7de; flex-shrink: 0;
+  transition: background 0.15s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; overflow: visible; position: relative;
+}
+#splitter:hover, #splitter.dragging { background: #2980b9; }
+#btn-collapse {
+  position: absolute; top: 12px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #2980b9; color: #fff; border: none;
+  font-size: 9px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  z-index: 10; flex-shrink: 0;
+}
+#btn-collapse:hover { background: #1e6fa0; }
+#panel-left { transition: width 0.2s, padding 0.2s; }
+#panel-left.no-transition { transition: none; }
+
+/* Sticky-Header/Label-Overlays sind pointer-events:none (rein visuelle Klone) — der
+   Label-Hyperlink (`links to [[url]]`) soll aber klickbar bleiben, auch wenn der reale,
+   interaktive Chart horizontal weggescrollt ist (siehe render()). */
+.sticky-overlay a { pointer-events: auto; cursor: pointer; }
+
+#panel-left h2 { font-size: 13px; font-weight: 700; color: #1e3a4c; letter-spacing: 0.02em; }
+
+#file-select {
+  width: 100%; padding: 4px 6px; border: 1px solid #d0d7de; border-radius: 4px;
+  font-size: 11.5px; color: #1e2d3d; background: #f8fafc; cursor: pointer;
+}
+#file-hint { font-size: 11px; color: #aaa; text-align: center; padding: 6px 0; }
+
+.section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  color: #8a9bb0; letter-spacing: 0.06em; margin-top: 4px;
+}
+
+.ctrl-row { display: flex; gap: 6px; align-items: center; }
+.ctrl-row span { font-size: 11px; color: #666; width: 26px; }
+
+input[type="date"] {
+  flex: 1; border: 1px solid #d0d7de; border-radius: 4px;
+  padding: 4px 6px; font-size: 11.5px; color: #1e2d3d;
+}
+input[type="date"]:focus { outline: none; border-color: #2980b9; }
+
+.zoom-row { display: flex; gap: 6px; align-items: center; }
+.zoom-btn {
+  width: 28px; height: 28px; border: 1px solid #d0d7de; border-radius: 4px;
+  background: #f8fafc; cursor: pointer; font-size: 17px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; color: #1e2d3d;
+  user-select: none;
+}
+.zoom-btn:hover { background: #eef1f4; }
+#zoom-label { font-size: 11px; color: #8a9bb0; flex: 1; text-align: center; }
+
+hr { border: none; border-top: 1px solid #eef1f4; }
+
+.btn {
+  width: 100%; padding: 8px; border: none; border-radius: 5px;
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  transition: background 0.15s; text-align: center;
+}
+.btn-primary { background: #2980b9; color: #fff; }
+.btn-primary:hover { background: #216fa0; }
+.btn-secondary { background: #eef1f4; color: #1e2d3d; }
+.btn-secondary:hover { background: #dce3e8; }
+
+#panel-right { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+
+#warn-banner {
+  position: relative;
+  flex-shrink: 0; display: none; max-height: 120px; overflow-y: auto;
+  background: #fff0f0; color: #c0392b; border-bottom: 1px solid #c0392b;
+  padding: 6px 32px 6px 12px; font-size: 12px; line-height: 1.5;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+#warn-banner .warn-fatal { font-weight: 700; }
+#warn-banner .warn-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Advisorische Hinweise (Lint-Nudges) gedämpft statt im vollen Fehler-Rot der übrigen Zeilen. */
+#warn-banner .warn-row.warn-hint { color: #8a6d3b; }
+#warn-banner .warn-close {
+  position: absolute; top: 4px; right: 6px;
+  width: 20px; height: 20px; line-height: 18px; text-align: center;
+  background: transparent; border: 1px solid #c0392b; border-radius: 3px;
+  color: #c0392b; cursor: pointer; font-size: 14px; font-weight: 700;
+  padding: 0; font-family: inherit;
+}
+#warn-banner .warn-close:hover { background: #c0392b; color: #fff0f0; }
+
+#source-preview {
+  display: none; max-height: 220px; overflow: auto;
+  border: 1px solid #d0d7de; border-radius: 4px;
+  background: #f8fafc; margin-top: 4px;
+}
+#source-preview pre {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px; line-height: 1.5; padding: 0; margin: 0;
+}
+.src-line { display: flex; padding-left: 0; border-left: 2px solid transparent; }
+.src-line-error { background: #fff0f0; border-left-color: #c0392b; }
+.src-ln {
+  display: inline-block; width: 28px; flex-shrink: 0;
+  color: #aaa; text-align: right; padding-right: 6px; user-select: none;
+}
+.src-txt { white-space: pre; color: #1e2d3d; }
+.src-line-error .src-txt { color: #c0392b; }
+
+#svg-wrap { background: #fff; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); overflow: auto; flex: 1; }
+
+#gantt-tooltip {
+  position: fixed; display: none; pointer-events: none; z-index: 9999;
+  background: #1a2d3d; color: #e0e8f0; border-radius: 6px;
+  padding: 9px 14px; font-size: 12.5px; line-height: 1.7;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4); white-space: nowrap;
+}
+#gantt-tooltip b { display: block; font-size: 13.5px; color: #fff; margin-bottom: 4px; }
+
+/* Dependency-Hover-Highlighting (UI-Feature, kein PlantUML-Konzept) */
+.dep-arrow path { pointer-events: stroke; }
+.dep-arrow polygon { pointer-events: visiblePainted; }
+.dep-arrow.hl path { stroke: #d97706; stroke-width: 2.2; }
+.dep-arrow.hl polygon { fill: #d97706; stroke: #d97706; stroke-width: 1.5; stroke-linejoin: miter; }
+/* Zweite Stufe: im Freeze-Modus Hover über eine bereits hervorgehobene Linie.
+   Komplementär zu Amber → kräftiges Cyan/Türkis; weit weg von Section-Blau.
+   Markiert zusätzlich die Bars/Milestones an den Enden der h2-Linie, damit
+   man im Pin-Modus sieht, welche Aufgaben durch die Verbindung verknüpft sind. */
+.dep-arrow.hl2 path { stroke: #00acc1; stroke-width: 3; }
+.dep-arrow.hl2 polygon { fill: #00acc1; stroke: #00acc1; stroke-width: 2; stroke-linejoin: miter; }
+[data-key].hl2 .bar-shape { stroke: #00acc1; stroke-width: 2.5; }
+[data-key].hl2 .ms-shape  { stroke: #00acc1; stroke-width: 2.5; stroke-linejoin: miter; }
+</style>
+</head>
+<body>
+<div id="warn-banner"></div>
+<div id="app">
+
+  <div id="panel-left" style="width:290px">
+    <h2>PlantUML Gantt Renderer</h2>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.0</div>
+
+    <div class="section-label io-ctrl">Datei</div>
+    <button class="btn btn-secondary io-ctrl" id="btn-pick-dir">Ordner wählen …</button>
+    <select id="file-select" class="io-ctrl"><option value="">— Datei wählen —</option></select>
+    <button class="btn btn-secondary io-ctrl" id="btn-reload">↺ Neu laden</button>
+    <label class="io-ctrl" style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-autoreload" checked> Auto-Reload bei Änderung
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-milestones" checked> Meilensteine anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-notes" checked> Notizen anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-deps" checked> Abhängigkeiten anzeigen
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-curved"> Pfeile als Kurven
+    </label>
+    <label style="font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#555">
+      <input type="checkbox" id="chk-critical"> Kritischen Pfad hervorheben
+    </label>
+    <div style="display:flex;gap:4px;margin-top:2px">
+      <button class="btn btn-secondary" id="btn-collapse-all" style="font-size:11px;padding:4px 6px">Alle einklappen</button>
+      <button class="btn btn-secondary" id="btn-expand-all" style="font-size:11px;padding:4px 6px">Alle ausklappen</button>
+    </div>
+    <div id="file-hint" class="io-ctrl">(.puml-Dateien)</div>
+
+    <hr>
+    <div class="section-label">Zeitfenster</div>
+    <div class="ctrl-row"><span>Von</span><input type="date" id="date-from"></div>
+    <div class="ctrl-row"><span>Bis</span><input type="date" id="date-to"></div>
+
+    <div class="section-label">Ansicht</div>
+    <div class="zoom-row">
+      <button class="zoom-btn" id="btn-zoom-out" title="Herauszoomen (oder Strg+Mausrad nach unten)">−</button>
+      <button class="zoom-btn" id="btn-zoom-in" title="Hineinzoomen (oder Strg+Mausrad nach oben)">+</button>
+      <span id="zoom-label">—</span>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:2px">
+      <button class="btn btn-secondary" id="btn-zoom-100" title="Setzt Zoom auf konstante 14 px/Tag — unabhängig vom Datums-Filter und der Browser-Breite. Identischer Output über Sessions und Maschinen → für reproduzierbaren Export." style="flex:1;font-size:11px;padding:4px 6px">100%</button>
+      <button class="btn btn-secondary" id="btn-fit-page" title="Setzt das Datums-Fenster auf alle Tasks, Auto-Zoom auf Browser-Breite. Sticky bei Resize / Splitter-Drag / Panel-Collapse, bis Zoom oder Datums-Filter manuell geändert werden." style="flex:1;font-size:11px;padding:4px 6px">Auto</button>
+    </div>
+
+    <hr>
+    <button class="btn btn-secondary" id="btn-export-svg">Export SVG</button>
+    <button class="btn btn-secondary" id="btn-export-png">Export PNG</button>
+    <button class="btn btn-secondary" id="btn-export-pdf">Drucken A4 (PDF)</button>
+    <button class="btn btn-secondary io-ctrl" id="btn-export-html" title="Eigenständige HTML-Datei mit fest eingebettetem Diagramm — für die Weitergabe ohne Ordnerzugriff">Export HTML</button>
+
+    <div id="source-preview"><pre id="source-preview-pre"></pre></div>
+  </div>
+
+  <div id="splitter"><button id="btn-collapse" title="Panel einklappen">◀</button></div>
+  <div id="panel-right">
+    <div id="svg-wrap"></div>
+  </div>
+</div>
+<div id="gantt-tooltip"></div>
+<script>
+// ─── Date Utilities ───────────────────────────────────────────────────────────
+
+// Existiert das Datum wirklich? (new Date rollt 2026-02-31 sonst still auf den 3. März.)
+function isRealDate(str) {
+  const [y, m, d] = str.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+function parseDate(str) {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + Math.round(n));
+  return d;
+}
+
+function parseDuration(num, unit) {
+  return unit.toLowerCase().startsWith('week') ? parseInt(num, 10) * 7 : parseInt(num, 10);
+}
+
+function isClosedDay(date, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays) {
+  const iso = dateToISO(date);
+  if (openOverrides && openOverrides.has(iso)) return false;
+  if (closedWeekdays.has(date.getDay()) || closedDates.has(iso)) return true;
+  if (itemPauses && itemPauses.has(iso)) return true;
+  if (itemPauseWeekdays && itemPauseWeekdays.has(date.getDay())) return true;
+  return false;
+}
+
+// Zählt, wie oft addDaysSkipping das Walk-Limit erreicht hat (Kalender ohne offenen Tag) —
+// processInput() setzt den Zähler vor jedem Lauf zurück und meldet Treffer als Warnung.
+let walkCapHits = 0;
+
+// Obergrenze für Dauern/Offsets in Tagen (≈10 Jahre) — verhindert Invalid Date und riesige SVGs.
+const MAX_SPAN_DAYS = 3650;
+
+// Gemeinsame Schrittschleife für addDaysWithPauses/addWorkDays — Vorwärts (n>0) UND
+// rückwärts (n<0): step-Richtung umkehren, `isSkippable` entscheidet je Aufrufer, welche
+// Tage übersprungen werden.
+function addDaysSkipping(date, n, isSkippable) {
+  // Schutz vor Endlosschleife bei NaN: fallback auf addDays.
+  if (!Number.isFinite(n)) return addDays(date, n);
+  if (n === 0) return new Date(date);
+  let cur = new Date(date);
+  const step = n > 0 ? 1 : -1;
+  let remaining = Math.abs(n);
+  // Hartes Limit gegen Endlosschleife, wenn isSkippable für JEDEN Tag true liefert
+  // (z. B. alle 7 Wochentage als closed/pauses-on markiert) — reines Autoren-Input,
+  // kein Parser-Fehler, also kein Warnkanal hier; Fallback auf addDays statt Hänger.
+  const MAX_WALK = 20000;
+  let walked = 0;
+  while (remaining > 0) {
+    if (++walked > MAX_WALK) { walkCapHits++; return addDays(date, n); }
+    cur = addDays(cur, step);
+    if (!isSkippable(cur)) remaining--;
+  }
+  return cur;
+}
+
+// Kalendertage + Item-Pausen-Skip — für Bar-Dauern. Globale closed-Direktiven (sat/sun/DATE)
+// haben KEINEN Einfluss (rein visuelle Wochenend-/Feiertags-Markierung).
+function addDaysWithPauses(date, n, itemPauses, itemPauseWeekdays) {
+  const hasPauses = (itemPauses && itemPauses.size) || (itemPauseWeekdays && itemPauseWeekdays.size);
+  if (!hasPauses) return addDays(date, n);
+  return addDaysSkipping(date, n, cur => {
+    const iso = dateToISO(cur);
+    return (itemPauses && itemPauses.has(iso)) || (itemPauseWeekdays && itemPauseWeekdays.has(cur.getDay()));
+  });
+}
+
+function addWorkDays(date, n, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays) {
+  const hasPauses = (itemPauses && itemPauses.size) || (itemPauseWeekdays && itemPauseWeekdays.size);
+  if (!closedDates.size && !closedWeekdays.size && !hasPauses) return addDays(date, n);
+  return addDaysSkipping(date, n, cur => isClosedDay(cur, closedDates, closedWeekdays, openOverrides, itemPauses, itemPauseWeekdays));
+}
+
+const WEEKDAY_MAP = { monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6, sunday:0 };
+
+function daysBetween(a, b) {
+  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((ub - ua) / 86400000);
+}
+
+function dateToISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+// ─── Parser ──────────────────────────────────────────────────────────────────
+
+function parsePlantUML(text) {
+  // Block-Kommentar /'…'/ vor dem Zeilen-Split entfernen, damit auch
+  // mehrzeilige Kommentare zuverlässig verschwinden. Non-greedy.
+  let cleaned = text.replace(/\/'[\s\S]*?'\//g, '');
+
+  // Notiz-Blöcke, '-Kommentarzeilen und title-Zeilen sind Freitext — vor den folgenden
+  // text-weiten Ersetzungen (Compound-Duration, then-Joining, D+n) maskieren, damit Prosa
+  // wie "in 2 weeks and 3 days" oder "D+30" darin nicht als Datums-/Dauer-Syntax uminterpretiert wird.
+  const masked = [];
+  const mask = re => { cleaned = cleaned.replace(re, m => { masked.push(m); return `MASK${masked.length - 1}`; }); };
+  mask(/note\s+bottom\s*\n[\s\S]*?\n\s*end\s+note/gi);
+  mask(/^[ \t]*'.*$/gm);
+  mask(/^[ \t]*title\s+.*$/gim);
+
+  // Compound-Duration: `N weeks and M days` → `(N*7 + M) days`. Eine Woche hat immer 7 Tage;
+  // closed-Direktiven (saturday/sunday/feste Daten) sind reine Visualisierung, keine
+  // Berechnung. `[Task] requires 1 week and 4 days` ist 11 Kalendertage Bar-Länge.
+  cleaned = cleaned.replace(
+    /(\d+)\s*(weeks?)\s+and\s+(\d+)\s*(days?)/gi,
+    (_m, n1, _u1, n2) => `${parseInt(n1, 10) * 7 + parseInt(n2, 10)} days`
+  );
+
+  // Multi-Line then-Succession ("Simplified task succession", Doku-belegt):
+  //   [A] requires 14 days then
+  //   [B] requires 4 days then
+  //   [C] requires 6 days
+  // → normalisiert zu einer Zeile, der nachfolgende Single-Line-Filter splittet sie wieder.
+  cleaned = cleaned.replace(/\s+then\s*\n\s*(?=\[)/g, ' then ');
+
+  // Single-Line then-Chaining: `[A] requires 5 days then [B] requires 3 days` → zwei Zeilen
+  // (Doku-belegt). Splittet vor jedem `then […]` an Whitespace zu Newline. Greift nicht in
+  // String-Literalen, weil `.puml` keine String-Literale mit Spaces+then+`[` enthält.
+  cleaned = cleaned.replace(/\s+(?=then\s+\[)/g, '\n');
+
+  // D+n Notation: `[T] starts D+5` / `[T] ends D+15` → konkretes Datum relativ zu
+  // `Project starts`. Doku-Beleg: `[Prototype design] starts D+0`, `… ends D+14`.
+  // Wir extrahieren `Project starts DATE` aus dem Text (egal wo es steht) und ersetzen
+  // dann alle `D+N` Vorkommen. Wenn `Project starts` fehlt UND `D+N`-Notation verwendet
+  // wird, geben wir eine dedizierte Warnung aus (nicht nur generic "Keyword ohne Muster").
+  const dPlusUsages = (cleaned.match(/\bD\+\d+\b/g) || []).length;
+  const psMatch = cleaned.match(/Project\s+starts\s+(\d{4}-\d{2}-\d{2})/i);
+  const psMissingForDPlus = dPlusUsages > 0 && !psMatch;
+  if (psMatch) {
+    const psAnchor = parseDate(psMatch[1]);
+    if (psAnchor) {
+      cleaned = cleaned.replace(/\bD\+(\d+)\b/g, (_m, n) => dateToISO(addDays(psAnchor, parseInt(n, 10))));
+    }
+  }
+
+  // Maskierte Notiz-Blöcke/Kommentarzeilen/Titel unverändert zurückschreiben.
+  cleaned = cleaned.replace(/MASK(\d+)/g, (_m, i) => masked[+i]);
+
+  const lines = cleaned.split('\n').map(l => l.trim());
+  const rawItems = [];
+  const parseWarnings = [];
+  if (psMissingForDPlus) {
+    parseWarnings.push({
+      lineNum: 0, raw: '',
+      reason: `D+n-Notation verwendet (${dPlusUsages} Vorkommen), aber 'Project starts YYYY-MM-DD' fehlt — Anker für D+0 ist nicht definiert.`,
+    });
+  }
+  // PlantUML-Builtins werden aktuell nicht unterstützt — explizite Warning statt stilles
+  // Fall-Through, damit User sieht: `%now()` / `%date(...)` / `!$var = ...` sind erkannt,
+  // aber bewusst nicht umgesetzt.
+  const builtinHits = [];
+  if (/%now\s*\(\s*\)/.test(cleaned)) builtinHits.push('%now()');
+  if (/%date\s*\(/.test(cleaned)) builtinHits.push('%date(...)');
+  if (/^\s*!\$\w+\s*=/m.test(cleaned)) builtinHits.push('!$var = ...');
+  if (builtinHits.length > 0) {
+    parseWarnings.push({
+      lineNum: 0, raw: '',
+      reason: `PlantUML-Builtin-Funktionen/Variablen verwendet (${builtinHits.join(', ')}) — aktuell nicht unterstützt vom Renderer.`,
+    });
+  }
+  let title = '';
+  // Vorab aus dem ganzen Text ermittelt (siehe psMatch oben, für D+n) — damit
+  // `[Task] lasts N days` unabhängig von der Zeilenposition der `Project starts`-Zeile
+  // korrekt verankert, statt bei früherer Position still auf "heute" zu fallen.
+  let projectStart = psMatch ? parseDate(psMatch[1]) : null;
+  const closedDates    = new Set();
+  const closedWeekdays = new Set();
+  const openOverrides  = new Set();
+  let lastTaskName = null;
+  let pendingNoteTarget = null;
+  let pendingNoteLines = [];
+  // Zuletzt gepushtes/gemergtes Task/Milestone (unabhängig von Array-Position) — `note bottom`
+  // muss sich hieran hängen, nicht an rawItems.findLast(), da Multi-Statement-Merges ein Item
+  // in-place aktualisieren, ohne seine Position im Array zu verschieben.
+  let lastTouchedItem = null;
+  // Name/Label → Item-Maps, damit Merge-Erkennung und Modifier-Lookups (Farbe, Prozent, Links,
+  // Pausen, same-row) nicht bei jeder Zeile linear durch rawItems scannen müssen.
+  const itemsByTypeAndName = Object.create(null);
+  const itemsByNameOrLabel = Object.create(null);
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    const lineNum = i + 1;
+    const rawLine = line;
+    // Multi-Line-Note: alles bis 'end note' sammeln (vor allem anderen, auch leere Zeilen).
+    if (pendingNoteTarget) {
+      if (/^end\s+note\s*$/i.test(line)) {
+        pendingNoteTarget.note = pendingNoteLines.join('\n');
+        pendingNoteTarget = null;
+        pendingNoteLines = [];
+      } else {
+        pendingNoteLines.push(line);
+      }
+      continue;
+    }
+    if (!line || /^@|^<style|^<\/style|^skinparam|^scale\b|^printscale\b/i.test(line)) continue;
+    try {
+
+    // Alias preprocessing: [Display] as [alias] rest → rewrite to [alias] rest, store label
+    let _aliasLabel = null;
+    { const am = line.match(/^\[([^\]]+)\]\s+as\s+\[([^\]]+)\]\s+([\s\S]*)/i);
+      if (am) { _aliasLabel = am[1].trim(); line = '[' + am[2].trim() + '] ' + am[3].trim(); } }
+    // then [Display] as [alias] rest → rewrite to then [alias] rest, store label
+    if (!_aliasLabel) {
+      const tam = line.match(/^(then\s+)\[([^\]]+)\]\s+as\s+\[([^\]]+)\]\s+([\s\S]*)/i);
+      if (tam) { _aliasLabel = tam[2].trim(); line = tam[1] + '[' + tam[3].trim() + '] ' + tam[4].trim(); }
+    }
+    // Inline-Notiz: `… : Notiz-Text` am Zeilenende — Renderer-Toleranz analog zu
+    // `note bottom`-Block. Wird vor allen anderen Patterns extrahiert und nach push()
+    // an das gepushed Task/Milestone gehängt. URL-Zeilen (`links to [[...]]`) werden
+    // ausgenommen, weil URLs `:` enthalten dürfen.
+    let _inlineNote = null;
+    // Nur bei Task/Milestone-Zeilen (beginnen mit `[` oder `then [`) extrahieren — sonst
+    // reißt der Colon-Split z. B. Section-Header wie `-- Phase 1 : Konzeption --` oder
+    // `title X : Y` kaputt, bevor deren eigene Regeln überhaupt zum Zug kommen.
+    if (!line.includes('[[') && /^(then\s+)?\[/i.test(line)) {
+      const inm = line.match(/^(.+?)\s+:\s+(.+?)\s*$/);
+      if (inm) { _inlineNote = inm[2].trim(); line = inm[1]; }
+    }
+    // Nicht existierende Kalenderdaten melden (parseDate rollt sie sonst still über) —
+    // Titel- und Kommentarzeilen sind Freitext und ausgenommen.
+    if (!/^(title\b|')/i.test(line)) {
+      for (const dm of line.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)) {
+        if (!isRealDate(dm[0])) {
+          parseWarnings.push({ lineNum, raw: rawLine,
+            reason: `Ungültiges Datum '${dm[0]}' — wird auf das nächste gültige Datum umgerechnet.`,
+            hint: 'Format YYYY-MM-DD mit existierendem Kalendertag verwenden.' });
+        }
+      }
+    }
+    const push = item => {
+      item.sourceLine = lineNum;
+      // Unrealistische Dauern/Offsets begrenzen (Infinity eingeschlossen).
+      for (const k of ['duration', 'offset']) {
+        if (typeof item[k] === 'number' && Math.abs(item[k]) > MAX_SPAN_DAYS) {
+          parseWarnings.push({ lineNum, raw: rawLine,
+            reason: `Dauer/Offset über ${MAX_SPAN_DAYS} Tage — auf ${MAX_SPAN_DAYS} begrenzt.` });
+          item[k] = Math.sign(item[k]) * MAX_SPAN_DAYS;
+        }
+      }
+      if (_aliasLabel) item.label = _aliasLabel;
+      if (_inlineNote && (item.type === 'task' || item.type === 'milestone') && !item.note) {
+        item.note = _inlineNote;
+      }
+      // Multi-Statement-per-Task: wenn schon ein Task/Milestone mit gleichem Namen
+      // existiert, neue Properties (nicht-null) ins existing Item mergen. Doku-Beispiel:
+      //   [Test prototype] requires 9 days
+      //   [Test prototype] starts 3 days after [Prototype design]'s end
+      // → ein Task mit duration=9 UND afterTask='Prototype design'.
+      // Patterns ohne explicit Duration setzen `duration: null`; finaler Default 1 nach
+      // dem Parser-Loop. Damit überschreibt der explicit Wert (z. B. 9) keinen Default.
+      if (item.type === 'task' || item.type === 'milestone') {
+        const existing = itemsByTypeAndName[item.type + '|' + item.name];
+        if (existing && !existing.parseError) {
+          // Wenn neues Item Constraint einführt, alte Default-Datumswerte resetten,
+          // damit der Resolver den Constraint auflöst statt am Default kleben zu bleiben.
+          if (item.afterTask && !existing.afterTask) { existing.start = null; existing.end = null; }
+          if (item.endAfterTask && !existing.endAfterTask) { existing.end = null; }
+          for (const k in item) {
+            if (item[k] !== null && item[k] !== undefined) existing[k] = item[k];
+          }
+          itemsByNameOrLabel[existing.name] = existing;
+          if (existing.label) itemsByNameOrLabel[existing.label] = existing;
+          lastTouchedItem = existing;
+          return existing;
+        }
+      }
+      rawItems.push(item);
+      if (item.type === 'task' || item.type === 'milestone') {
+        itemsByTypeAndName[item.type + '|' + item.name] = item;
+        itemsByNameOrLabel[item.name] = item;
+        if (item.label) itemsByNameOrLabel[item.label] = item;
+        lastTouchedItem = item;
+      }
+      return item;
+    };
+
+    let m;
+
+    // Code-Kommentar: jedes Apostroph-Präfix wird komplett ignoriert (PlantUML-Konvention).
+    if (line.startsWith("'")) continue;
+
+    // Diagramm-Notiz (PlantUML-Standard): `note bottom` + Text-Block + `end note`.
+    // Hängt automatisch an das zuletzt definierte Task/Milestone.
+    if (/^note\s+bottom\s*$/i.test(line)) {
+      pendingNoteTarget = lastTouchedItem;
+      pendingNoteLines = [];
+      continue;
+    }
+
+    // Hyperlink (PlantUML-Standard): `[X] links to [[URL]]` — doppelte eckige Klammern um die URL.
+    if ((m = line.match(/^\[([^\]]+)\]\s+links\s+to\s+\[\[([^\]]+)\]\]\s*$/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) t.link = m[2].trim();
+      continue;
+    }
+
+    // Title
+    if ((m = line.match(/^title\s+(.*)/i))) { title = m[1].trim(); continue; }
+
+    // Project starts
+    if ((m = line.match(/^[Pp]roject\s+starts?\s+(?:on\s+)?(\d{4}-\d{2}-\d{2})/))) {
+      projectStart = parseDate(m[1]); continue;
+    }
+
+    // Closed weekday: saturday are closed
+    if ((m = line.match(/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+are?\s+closed/i))) {
+      closedWeekdays.add(WEEKDAY_MAP[m[1].toLowerCase()]); continue;
+    }
+
+    // Closed date range: 2026-12-24 to 2026-12-26 are closed
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})\s+(?:are|is)\s+closed/i))) {
+      const from = parseDate(m[1]);
+      const to   = parseDate(m[2]);
+      if (from && to && from <= to) {
+        let cur = new Date(from);
+        // Hartes Limit (10 Jahre) gegen pathologische Eingaben.
+        for (let n = 0; n <= 3650 && cur <= to; n++) {
+          closedDates.add(dateToISO(cur));
+          cur = addDays(cur, 1);
+        }
+      }
+      continue;
+    }
+
+    // Closed date: 2026-12-25 is closed
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+closed/i))) {
+      closedDates.add(m[1]); continue;
+    }
+
+    // Reopen-Override: 2026-05-23 is open  (überschreibt z. B. "saturday are closed")
+    if ((m = line.match(/^(\d{4}-\d{2}-\d{2})\s+is\s+open/i))) {
+      openOverrides.add(m[1]);
+      closedDates.delete(m[1]); // falls vorher explizit closed gesetzt, ebenfalls aufheben
+      continue;
+    }
+
+    // Dependency arrow: [A] -> [B]
+    if ((m = line.match(/^\[([^\]]+)\]\s*->\s*\[([^\]]+)\]/))) {
+      push({ type: 'dep', from: m[1].trim(), to: m[2].trim() }); continue;
+    }
+
+    // Color modifier: [Task] is colored in #hex/TextColor
+    if ((m = line.match(/^\[([^\]]+)\]\s+is\s+colored\s+in\s+([^\/\s]+)(?:\/(\S+))?/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) { t.barColor = m[2]; t.textColor = m[3] || null; }
+      continue;
+    }
+
+    // Progress modifier: [Task] is X% completed
+    if ((m = line.match(/^\[([^\]]+)\]\s+is\s+(\d+)%\s+completed/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) t.pct = Math.min(100, Math.max(0, +m[2])) / 100;
+      continue;
+    }
+
+    // Pause modifier (date): [Task] pauses on 2026-06-15
+    // Doku-Beleg: [Implementation] pauses on 2018/12/13
+    if ((m = line.match(/^\[([^\]]+)\]\s+pauses\s+on\s+(\d{4}-\d{2}-\d{2})/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) { if (!t.pauses) t.pauses = new Set(); t.pauses.add(m[2]); }
+      continue;
+    }
+
+    // Pause modifier (weekday): [Task] pauses on monday
+    // Doku-Beleg: [Implementation] pauses on monday
+    if ((m = line.match(/^\[([^\]]+)\]\s+pauses\s+on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) { if (!t.pauseWeekdays) t.pauseWeekdays = new Set(); t.pauseWeekdays.add(WEEKDAY_MAP[m[2].toLowerCase()]); }
+      continue;
+    }
+
+    // Same-row modifier: [X] displays on same row as [Y]
+    // Doku-Beleg: [Test prototype] displays on same row as [Prototype design]
+    if ((m = line.match(/^\[([^\]]+)\]\s+displays\s+on\s+same\s+row\s+as\s+\[([^\]]+)\]/i))) {
+      const t = itemsByNameOrLabel[m[1]];
+      if (t) t.sameRowAs = m[2];
+      continue;
+    }
+
+    // Subsection: -- Name [2] --
+    if ((m = line.match(/^--\s*(.+?)\s+\[2\]\s*--$/))) {
+      push({ type: 'subsection', name: m[1], note: null }); continue;
+    }
+
+    // Section: -- Name --
+    if ((m = line.match(/^--\s*(.+?)\s*--$/))) {
+      push({ type: 'section', name: m[1], note: null }); continue;
+    }
+
+    // Milestone: [Name] happens DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+(\d{4}-\d{2}-\d{2})/))) {
+      push({ type: 'milestone', name: m[1], date: parseDate(m[2]), afterTask: null, offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s start
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+start/))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], afterWhat: 'start', offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s end + OFFSET (oder − OFFSET, optional `working`)
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)/i))) {
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2],
+        offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5], note: null }); continue;
+    }
+
+    // Milestone: [Name] happens at [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+at\s+\[([^\]]+)\]'s\s+end/))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[2], offset: 0, note: null }); continue;
+    }
+
+    // Milestone: [Name] happens on N days/weeks after [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s*(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[4], offset: parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Milestone: [Name] happens on N (working )? days/weeks before [Other]'s start (Backward-Form)
+    if ((m = line.match(/^\[([^\]]+)\]\s+happens\s+on\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+start/i))) {
+      push({ type: 'milestone', name: m[1], date: null, afterTask: m[5], afterWhat: 'start',
+        offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3], note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] starts DATE and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: parseDate(m[3]), duration: null, afterTask: null, note: null }); continue;
+    }
+
+    // Task occurs from [M1] to [M2] — Span zwischen zwei Milestones/Tasks
+    // Doku-Beleg: [Prototype design] occurs from [P_start] to [P_end]
+    if ((m = line.match(/^\[([^\]]+)\]\s+occurs\s+from\s+\[([^\]]+)\]\s+to\s+\[([^\]]+)\]/i))) {
+      lastTaskName = m[1];
+      // Endanker 'end' statt 'start': die Spanne reicht bis zum ENDE von M2 (nur bei
+      // Milestones irrelevant, da dort ohnehin .date direkt verwendet wird — bei einem
+      // Task als M2 wäre 'start' hier falsch, "bis Y" meint das ganze Y, nicht nur dessen Start).
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0,
+        endAfterTask: m[3], endAfterWhat: 'end', endOffset: 0,
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] ends DATE and (lasts|requires) N unit
+    // (Rückwärts: End fest, Start = End − Dauer.)
+    if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+        duration: parseDuration(m[3], m[4]), afterTask: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] ends DATE  (Standalone, ohne Start-Constraint)
+    // Doku-Beleg: [Prototype design] ends 2020-07-15
+    if ((m = line.match(/^\[([^\]]+)\]\s+ends\s+(\d{4}-\d{2}-\d{2})\s*$/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[2]),
+        duration: null, afterTask: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] starts DATE and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d{4}-\d{2}-\d{2})\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: parseDate(m[2]), end: null, duration: parseDuration(m[3], m[4]), afterTask: null, note: null }); continue;
+    }
+
+    // Task BACKWARD + END-ANCHOR combined: [Name] starts N (working )? days before [Y]'s start|end and ends at [Y]'s start|end
+    // Doku-Beleg (Complex example):
+    //   [Init and write tests report] starts 1 day before [Test prototype]'s start and ends at [Test prototype]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        endAfterTask: m[7], endAfterWhat: m[8], endOffset: 0,
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task BACKWARD + Duration: [Name] starts N (working )? days before [Y]'s start|end and lasts|requires M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        duration: parseDuration(m[7], m[8]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task BACKWARD only: [Name] starts N (working )? days before [Y]'s start|end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+before\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[5], afterWhat: m[6], offset: -parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task DURATION + END-ANCHOR: [Name] lasts|requires N days and ends at [Y]'s start|end
+    // Doku-Beleg: [Write tests] requires 5 days and ends at [Prototype design]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)\s+and\s+ends\s+at\s+\[([^\]]+)\]'s\s+(start|end)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        endAfterTask: m[4], endAfterWhat: m[5], endOffset: 0,
+        duration: parseDuration(m[2], m[3]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] lasts|requires N unit (uses projectStart)
+    if ((m = line.match(/^\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: projectStart || new Date(), end: null, duration: parseDuration(m[2], m[3]), afterTask: null, note: null }); continue;
+    }
+
+    // then [Task] lasts|requires N unit (starts right after previous task)
+    if ((m = line.match(/^then\s+\[([^\]]+)\]\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      const prev = lastTaskName;
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: prev, offset: 0, duration: parseDuration(m[2], m[3]), note: null }); continue;
+    }
+
+    // Task: [Name] starts N (working )? days/weeks after [Other]'s end and lasts|requires M unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[5], offset: parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        duration: parseDuration(m[6], m[7]), note: null, sourceLine: lineNum }); continue;
+    }
+
+    // Task: [Name] starts N (working )? days/weeks after [Other]'s end
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+(\d+)\s+(working\s+)?(days?|weeks?)\s+after\s+\[([^\]]+)\]'s\s+end/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[5], offset: parseDuration(m[2], m[4]), offsetWorkDays: !!m[3],
+        duration: null, note: null, sourceLine: lineNum }); continue;
+    }
+
+
+    // Task: [Name] starts at [Other]'s start + OFFSET (oder − OFFSET, optional `working`) and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
+        duration: parseDuration(m[7], m[8]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start + OFFSET (oder − OFFSET, optional `working`) and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+      lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[7]),
+        afterTask: m[2], afterWhat: 'start', offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
+        duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s start (no duration)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+start/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], afterWhat: 'start', offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end + OFFSET (oder − OFFSET, optional `working`) and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/i))) {
+      lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[7]),
+        afterTask: m[2], offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
+        duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end + OFFSET (oder − OFFSET, optional `working`) and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s*([+-])\s*(\d+)\s+(working\s+)?(days?|weeks?)\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      const sign = m[3] === '-' ? -1 : 1;
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: sign * parseDuration(m[4], m[6]), offsetWorkDays: !!m[5],
+        duration: parseDuration(m[7], m[8]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end and ends DATE
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+ends\s+(\d{4}-\d{2}-\d{2})/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: parseDate(m[3]),
+        afterTask: m[2], offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end and lasts|requires N unit
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end\s+and\s+(?:lasts|requires)\s+(\d+)\s*(days?|weeks?)/i))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: 0, duration: parseDuration(m[3], m[4]), note: null }); continue;
+    }
+
+    // Task: [Name] starts at [Other]'s end (no duration → 1 day)
+    if ((m = line.match(/^\[([^\]]+)\]\s+starts\s+at\s+\[([^\]]+)\]'s\s+end/))) {
+      lastTaskName = m[1];
+      push({ type: 'task', name: m[1], start: null, end: null,
+        afterTask: m[2], offset: 0, duration: null, note: null }); continue;
+    }
+
+    // Fall-through: kein Pattern hat gegriffen → Heuristik für wahrscheinliche Tippfehler
+    const lbr = (line.match(/\[/g) || []).length;
+    const rbr = (line.match(/\]/g) || []).length;
+    let heuristicMatched = false;
+    if (lbr !== rbr) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Eckklammer-Imbalance' });
+      heuristicMatched = true;
+    } else if (/\d{4}-\d{1,2}-\d{1,2}/.test(line) && !/\b\d{4}-\d{2}-\d{2}\b/.test(line)) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Verdächtiges Datum (YYYY-MM-DD erwartet)' });
+      heuristicMatched = true;
+    } else if (/\b(starts|ends|lasts|requires|happens)\b/i.test(line)) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Keyword ohne erkanntes Muster' });
+      heuristicMatched = true;
+    }
+    // Dummy-Task einfügen, damit Nachfolger die Referenz noch finden und kontrolliert
+    // als "unresolved" enden statt an den Projektanfang zurückzuspringen.
+    if (heuristicMatched) {
+      const nm = line.match(/^\[([^\]]+)\]/);
+      const hasKw = /\b(starts|ends|lasts|requires|happens)\b/i.test(line);
+      if (nm && hasKw) {
+        rawItems.push({
+          type: 'task', name: nm[1].trim(),
+          start: null, end: null, afterTask: null, duration: null, note: null,
+          parseError: true, sourceLine: lineNum,
+        });
+      }
+    }
+    } catch (err) {
+      parseWarnings.push({ lineNum, raw: rawLine, reason: 'Parse-Ausnahme: ' + (err.message || err) });
+    }
+  }
+
+  // Default-Duration für Tasks ohne explizite Duration-Clause (Patterns wie `starts at [Y]'s end`
+  // ohne `and (lasts|requires) N`). Default = 1 Arbeitstag. Wird NACH dem Parser-Loop gesetzt,
+  // damit Multi-Statement-Merge eine echte Duration (z. B. 9) nicht durch Default-1 verdrängt.
+  // Ausnahme: Tasks mit endAfterTask (End-Anchor, z. B. `occurs from`/`ends at [Y]'s end`) sollen
+  // ihr Ende über den Anker beziehen — ein Default hier würde in resolveItems() Phase 1
+  // (Start+Dauer) das Ende vorzeitig setzen und den End-Anker in Phase 2 nie zum Zug kommen lassen.
+  for (const it of rawItems) {
+    if (it.type === 'task' && (it.duration === null || it.duration === undefined) && !it.endAfterTask) {
+      it.duration = 1;
+    }
+  }
+  return { title, projectStart, rawItems, closedDates, closedWeekdays, openOverrides, parseWarnings };
+}
+
+// ─── Dependency Resolver ─────────────────────────────────────────────────────
+
+function resolveItems(items, closedDates = new Set(), closedWeekdays = new Set(), openOverrides = new Set()) {
+  const map = Object.create(null);
+  for (const it of items) {
+    if (it.type === 'task' || it.type === 'milestone') map[it.name] = it;
+  }
+
+  // Bar-Dauer = Kalendertage (closed-Direktiven sind rein visuell, nicht datums-relevant).
+  // Item-Pausen (`pauses on …`) schieben das Ende weiter; globale closed nicht.
+  // Resolve absolute-start tasks that need end computed from duration
+  for (const it of items) {
+    if (it.type === 'task' && it.start && !it.end && it.duration != null)
+      it.end = addDaysWithPauses(it.start, it.duration, it.pauses, it.pauseWeekdays);
+  }
+  // Resolve absolute-end tasks that need start computed from duration (Rückwärts).
+  for (const it of items) {
+    if (it.type === 'task' && it.end && !it.start && it.duration != null)
+      it.start = addDaysWithPauses(it.end, -it.duration, it.pauses, it.pauseWeekdays);
+  }
+
+  // Resolve dependency-based items (multi-pass for chains). Behandelt start-anchor (afterTask)
+  // UND end-anchor (endAfterTask) in derselben Schleife — end-anchor + duration kann Start
+  // rückwärts berechnen, was wieder andere Items beeinflusst.
+  for (let pass = 0; pass < items.length + 2; pass++) {
+    let dirty = false;
+    for (const it of items) {
+      // --- Phase 1: start-anchor (afterTask) ---
+      if (it.afterTask && !(it.type === 'milestone' && it.date) && !(it.type === 'task' && it.start)) {
+        const dep = map[it.afterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) { dirty = true; }
+        else {
+          // PlantUML-strict: Offset kalendarisch (addDays), nur "N working days after"
+          // setzt offsetWorkDays=true und nutzt addWorkDays. Item-Pausen gelten hier nicht
+          // (Pause gehört zum Task, nicht zur Lücke davor).
+          const off = it.offset || 0;
+          const s = it.offsetWorkDays
+            ? addWorkDays(depRef, off, closedDates, closedWeekdays, openOverrides)
+            : addDays(depRef, off);
+          if (it.type === 'milestone') {
+            it.date = s;
+          } else {
+            it.start = s;
+            // Bar-Länge = Kalendertage; item-Pausen schieben das Ende weiter.
+            if (!it.end && it.duration != null) it.end = addDaysWithPauses(s, it.duration, it.pauses, it.pauseWeekdays);
+          }
+        }
+      }
+      // --- Phase 2: end-anchor (endAfterTask) ---
+      if (it.type === 'task' && it.endAfterTask && !it.end) {
+        const dep = map[it.endAfterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.endAfterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) { dirty = true; }
+        else {
+          // End-Offset kalendarisch (analog Phase 1). Kein `working`-Capture für end-anchor
+          // in der aktuellen Spec — endOffset bleibt strict calendar.
+          it.end = addDays(depRef, it.endOffset || 0);
+          // Rückwärts-Start aus Dauer wenn start noch unbekannt — Bar-Länge, item-Pausen relevant.
+          if (!it.start && it.duration != null) {
+            it.start = addDaysWithPauses(it.end, -it.duration, it.pauses, it.pauseWeekdays);
+          }
+        }
+      }
+    }
+    if (!dirty) break;
+  }
+  // Detect circular or missing dependencies
+  const unresolved = items.filter(it =>
+    it.type !== 'dep' &&
+    (it.afterTask || it.endAfterTask) &&
+    (it.type === 'milestone' ? !it.date : !it.start)
+  );
+  if (unresolved.length > 0) {
+    items._unresolvedDetails = unresolved.map(i => ({
+      name: i.label || i.name,
+      afterTask: i.afterTask,
+      sourceLine: i.sourceLine || 0,
+    }));
+    // Cycle-Detection auf den Constraint-Edges der unresolved Items (DFS).
+    // Wenn z. B. A.afterTask=B UND B.afterTask=A → expliziter Zyklus-Hinweis statt
+    // nur "2 unresolved".
+    const byName = Object.create(null);
+    for (const it of items) if (it.name) byName[it.name] = it;
+    const visited = new Set();
+    const inStack = new Set();
+    let cyclePath = null;
+    function dfs(name, path) {
+      if (cyclePath) return;
+      if (inStack.has(name)) {
+        const idx = path.indexOf(name);
+        cyclePath = path.slice(idx).concat([name]);
+        return;
+      }
+      if (visited.has(name)) return;
+      visited.add(name);
+      inStack.add(name);
+      const it = byName[name];
+      if (it) {
+        const edges = [];
+        if (it.afterTask) edges.push(it.afterTask);
+        if (it.endAfterTask) edges.push(it.endAfterTask);
+        for (const next of edges) dfs(next, [...path, name]);
+      }
+      inStack.delete(name);
+    }
+    for (const u of unresolved) {
+      dfs(u.name, []);
+      if (cyclePath) break;
+    }
+    if (cyclePath) items._unresolvedCycle = cyclePath;
+  }
+  return items;
+}
+
+// Klassifiziert die Constraint-Form von `item` relativ zu seinem Vorgänger `depFrom`
+// (FS/SS/FF/SF) — gemeinsam genutzt von computeCriticalPath (hard/soft/SS-Kanten für CPM)
+// und buildSVG (Pfeil-Anker-Form), damit beide Stellen dieselbe Definition verwenden statt
+// unabhängig voneinander aus denselben Feldern abzuleiten (Drift-Risiko zwischen
+// kritischem Pfad und gezeichneten Pfeilen).
+function classifyConstraint(item, depFrom) {
+  if (item.afterTask === depFrom) {
+    return { kind: item.afterWhat === 'start' ? 'SS' : 'FS', isBackward: (item.offset || 0) < 0 };
+  }
+  if (item.endAfterTask === depFrom) {
+    return { kind: item.endAfterWhat === 'start' ? 'SF' : 'FF', isBackward: false };
+  }
+  return null;
+}
+
+// ─── Critical Path (CPM, Slack=0) ─────────────────────────────────────────────
+
+function computeCriticalPath(rawItems) {
+  const nodes = Object.create(null);
+  const order = Object.create(null);
+  rawItems.forEach((it, idx) => {
+    if (it.type === 'task' && it.start && it.end) {
+      nodes[it.name] = { name: it.name, start: it.start, end: it.end, sourceLine: it.sourceLine || 0 };
+      order[it.name] = idx;
+    } else if (it.type === 'milestone' && it.date) {
+      nodes[it.name] = { name: it.name, start: it.date, end: it.date, sourceLine: it.sourceLine || 0 };
+      order[it.name] = idx;
+    }
+  });
+  const names = Object.keys(nodes);
+  if (names.length === 0) {
+    return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false };
+  }
+
+  const preds = Object.create(null), succs = Object.create(null);
+  for (const n of names) { preds[n] = new Set(); succs[n] = new Set(); }
+  // Hard edges: stammen aus afterTask, d. h. der Nachfolger verschiebt sich
+  // tatsächlich, wenn der Vorgänger sich verzögert (echte Date-Constraint).
+  // Soft edges: nur dep-Pfeile oder implizit-temporale Kanten — visualisieren
+  // eine logische Reihenfolge, halten aber kein Datum fest.
+  const hardEdges = new Set();
+  // SS-Edges (Start-Start, also `afterWhat === 'start'`) sind keine FS-Beziehung —
+  // der Nachfolger läuft parallel zum Vorgänger. Konflikt-Check ignoriert sie,
+  // weil from.end > to.start dort der Normalfall, nicht der Konflikt ist.
+  const ssEdges = new Set();
+  const addEdge = (from, to, hard = false, ss = false) => {
+    if (!nodes[from] || !nodes[to] || from === to) return;
+    preds[to].add(from);
+    succs[from].add(to);
+    const key = from + '→' + to;
+    if (hard) hardEdges.add(key);
+    if (ss) ssEdges.add(key);
+  };
+  for (const it of rawItems) {
+    if ((it.type === 'task' || it.type === 'milestone') && it.afterTask) {
+      // Backward-Constraint (`starts N days before [Y]`) hat offset<0. CPM ist forward-only
+      // definiert (FS-Beziehungen); ein hard-FS-Edge mit negativem Gap würde LS[from] ins
+      // Negative ziehen und die echte Hard-Chain als nicht-kritisch markieren. Als soft edge:
+      // Backward-Task wird connected gemeldet, Slack ist positiv (semantisch korrekt — eine
+      // vorgelagerte Phase ist eben nicht Teil des kritischen Hauptpfads).
+      const c = classifyConstraint(it, it.afterTask);
+      addEdge(it.afterTask, it.name, !c.isBackward, c.kind === 'SS');
+    }
+    // End-Anchor: Nachfolger.end gebunden an Vorgänger.start/end. Im CPM-Sinn ist
+    // das FF (Finish-Finish), nicht FS — würde als hard FS-Edge falsche Lag-Propagation
+    // im Backward-Pass erzeugen. Als soft edge: Nachfolger nicht als isoliert markiert,
+    // CP-Berechnung der Hard-Chain bleibt unbeeinflusst.
+    if (it.type === 'task' && it.endAfterTask) {
+      addEdge(it.endAfterTask, it.name, false);
+    }
+    if (it.type === 'dep') {
+      addEdge(it.from, it.to, false);
+    }
+  }
+  // Snapshot der Knoten, die durch explizite Kanten (afterTask + dep) verbunden sind.
+  // Implizit-temporale Kanten zählen für Isolated-Detection nicht — sie sind ein
+  // Render-Fallback, kein Beleg für eine logische Abhängigkeit.
+  const explicitlyConnected = new Set();
+  for (const n of names) {
+    if (preds[n].size > 0 || succs[n].size > 0) explicitlyConnected.add(n);
+  }
+  for (const n of names) {
+    if (preds[n].size > 0) continue;
+    const t = nodes[n];
+    let cand = null;
+    for (const a of names) {
+      if (a === n) continue;
+      const node = nodes[a];
+      if (node.end > t.start) continue;
+      if (order[a] >= order[n]) continue;
+      if (!cand
+          || nodes[cand].end < node.end
+          || (nodes[cand].end.getTime() === node.end.getTime() && order[cand] < order[a])) {
+        cand = a;
+      }
+    }
+    if (cand) addEdge(cand, n);
+  }
+
+  let globalStart = nodes[names[0]].start;
+  for (const n of names) if (nodes[n].start < globalStart) globalStart = nodes[n].start;
+  const ES = Object.create(null), EF = Object.create(null), dur = Object.create(null);
+  for (const n of names) {
+    ES[n] = daysBetween(globalStart, nodes[n].start);
+    EF[n] = daysBetween(globalStart, nodes[n].end);
+    dur[n] = EF[n] - ES[n];
+  }
+
+  const indeg = Object.create(null);
+  for (const n of names) indeg[n] = preds[n].size;
+  const queue = names.filter(n => indeg[n] === 0);
+  const topo = [];
+  while (queue.length) {
+    const n = queue.shift();
+    topo.push(n);
+    for (const s of succs[n]) {
+      indeg[s]--;
+      if (indeg[s] === 0) queue.push(s);
+    }
+  }
+  if (topo.length < names.length) {
+    const topoSet = new Set(topo);
+    const cycleDetails = names.filter(n => !topoSet.has(n))
+      .map(n => ({ name: n, sourceLine: nodes[n].sourceLine }));
+    return { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: true, cycleDetails };
+  }
+
+  // CPM mit Komponenten-Ende. ES/EF kommen aus den bereits resolveten Item-Daten
+  // (kein echter Forward-Pass). Statt eines globalen Projektendes (das ein Sink
+  // mit spätem absoluten End-Datum wie `[doc] ends 2026-07-03` verfälschen würde)
+  // bekommt jede zusammenhängende Hard-Komponente ihr eigenes Ende (spätestes EF).
+  // So wird innerhalb einer Komponente nur die längste Kette kritisch, kürzere
+  // Seitenketten erhalten echten Slack — und isolierte Später-Tasks bilden eine
+  // eigene Komponente und beeinflussen die anderen nicht.
+  const hardConnected = new Set();
+  for (const key of hardEdges) {
+    const [hcFrom, hcTo] = key.split('→');
+    hardConnected.add(hcFrom); hardConnected.add(hcTo);
+  }
+  // Lag pro Edge in Kalendertagen. Nur hard edges (afterTask) verschieben
+  // den Nachfolger tatsächlich; soft edges (dep-Pfeile, implizit-temporal)
+  // gelten als FS mit lag 0 — der Nachfolger reagiert nicht auf eine
+  // Verzögerung des Vorgängers, also bekommt der Vorgänger seinen vollen
+  // Puffer bis LS[s].
+  const edgeLag = Object.create(null);
+  for (const from of names) {
+    for (const to of succs[from]) {
+      const key = from + '→' + to;
+      if (hardEdges.has(key)) {
+        // Hard edge: realer Gap im Plan. Bei SS-Beziehungen (afterWhat='start')
+        // kann der Gap rechnerisch negativ werden → auf 0 klemmen, weil ein
+        // negativer Lag in der Backward-Pass-Formel sinnfrei ist.
+        edgeLag[key] = Math.max(0, ES[to] - EF[from]);
+      } else {
+        edgeLag[key] = 0;
+      }
+    }
+  }
+  // Hard-Komponenten: zusammenhängende Teilgraphen über die (ungerichteten) hard
+  // edges. Der Backward-Pass nutzt pro Komponente EIN gemeinsames Ende
+  // (spätestes EF), statt jeden Sink für sich auf LF=EF zu setzen. Damit bekommen
+  // kürzere Seitenketten innerhalb derselben Komponente echten positiven Slack
+  // (klassisches CPM), während ein isolierter Task mit spätem Enddatum (z. B.
+  // `[doc] ends 2026-07-03`) seine eigene Komponente bildet und die Slacks der
+  // anderen Ketten NICHT verfälscht — der Grund, warum kein globales Projektende
+  // verwendet wird.
+  const adj = Object.create(null);
+  for (const n of names) adj[n] = [];
+  for (const key of hardEdges) {
+    const [a, b] = key.split('→');
+    adj[a].push(b); adj[b].push(a);
+  }
+  const compOf = Object.create(null);
+  let compId = 0;
+  for (const n of names) {
+    if (compOf[n] !== undefined || !hardConnected.has(n)) continue;
+    const stack = [n];
+    compOf[n] = compId;
+    while (stack.length) {
+      const u = stack.pop();
+      for (const v of adj[u]) if (compOf[v] === undefined) { compOf[v] = compId; stack.push(v); }
+    }
+    compId++;
+  }
+  const compEnd = Object.create(null);
+  for (const n of names) {
+    const c = compOf[n];
+    if (c === undefined) continue;
+    if (compEnd[c] === undefined || EF[n] > compEnd[c]) compEnd[c] = EF[n];
+  }
+
+  const LF = Object.create(null), LS = Object.create(null);
+  for (let i = topo.length - 1; i >= 0; i--) {
+    const n = topo[i];
+    // LF[n] = min(LS[s] − lag(n,s)) über **hard FS-Edges**. SS-Edges
+    // (`afterWhat==='start'`) bestimmen nicht das Ende des Predecessors —
+    // sie sind eine Start-Start-Kopplung und gehören nicht in die FS-Backward-
+    // Propagation. Soft edges (dep, implicit-temporal) bleiben außen vor,
+    // weil sie kein Datums-Constraint sind.
+    let minVal = Infinity;
+    for (const s of succs[n]) {
+      const key = n + '→' + s;
+      if (!hardEdges.has(key)) continue;
+      if (ssEdges.has(key)) continue;
+      const lag = edgeLag[key] || 0;
+      const val = LS[s] - lag;
+      if (val < minVal) minVal = val;
+    }
+    // Sink (kein hard FS-Successor): LF = Komponenten-Ende, damit nur die längste
+    // Kette zum spätesten Endpunkt der Komponente kritisch wird; kürzere Sinks
+    // bekommen positiven Slack. Knoten ohne Hard-Komponente fallen auf EF zurück.
+    const sinkLF = compOf[n] !== undefined ? compEnd[compOf[n]] : EF[n];
+    LF[n] = minVal === Infinity ? sinkLF : minVal;
+    LS[n] = LF[n] - dur[n];
+  }
+
+  const criticalNodes = new Set();
+  for (const n of names) {
+    // Kritisch nur, wenn (a) Slack=0 UND (b) der Knoten Teil mindestens einer
+    // hard FS-Kette ist. Soft-only-verbundene Items sind nicht hardConnected und
+    // damit nie kritisch — ein freistehender Task hat keine echte Plan-Constraint
+    // und ist daher nicht im klassischen Sinn kritisch.
+    if (!hardConnected.has(n)) continue;
+    if (Math.abs(LS[n] - ES[n]) < 0.5) criticalNodes.add(n);
+  }
+  // Isolated Items: ohne jegliche Vorgänger und Nachfolger werden sie aus
+  // criticalNodes entfernt — „kritisch" ist für isoliert stehende Items irreführend.
+  const isolatedItems = [];
+  if (names.length > 1) {
+    for (const n of names) {
+      if (!explicitlyConnected.has(n)) {
+        isolatedItems.push({ name: n, sourceLine: nodes[n].sourceLine });
+        criticalNodes.delete(n);
+      }
+    }
+  }
+  // Plan-Konflikte: FS-Beziehung mit Vorgänger.end > Nachfolger.start ist semantisch
+  // absurd (Nachfolger sitzt zeitlich vor Ende des Vorgängers). SS-Beziehungen
+  // (`afterWhat === 'start'`) sind keine Konflikte — der Nachfolger läuft dort
+  // bewusst parallel.
+  const planConflicts = [];
+  // Map: name → item (für offset-Check) — Backward-Constraints (`starts N days before`)
+  // setzen offset<0 und sind kein Plan-Konflikt, sondern intendiert.
+  const itemByName = Object.create(null);
+  for (const it of rawItems) if (it.name) itemByName[it.name] = it;
+  for (const from of names) {
+    for (const to of succs[from]) {
+      const key = from + '→' + to;
+      if (ssEdges.has(key)) continue;
+      if (!hardEdges.has(key)) continue; // Soft `->`-Arrows sind explizit kein Datums-Constraint
+      const toItem = itemByName[to];
+      if (toItem && (toItem.offset || 0) < 0) continue; // Backward — bewusst vor end
+      if (toItem && toItem.endAfterTask === from) continue; // End-Anchor: Nachfolger läuft parallel zum Vorgänger, endet gemeinsam
+      if (nodes[from].end > nodes[to].start) {
+        planConflicts.push({
+          from, to,
+          fromEnd: nodes[from].end,
+          toStart: nodes[to].start,
+          sourceLine: nodes[to].sourceLine,
+        });
+      }
+    }
+  }
+  const criticalEdges = new Set();
+  for (const from of criticalNodes) {
+    for (const to of succs[from]) {
+      if (criticalNodes.has(to)) criticalEdges.add(from + '→' + to);
+    }
+  }
+  return { criticalNodes, criticalEdges, cycleDetected: false, cycleDetails: [], isolatedItems, planConflicts };
+}
+
+// ─── Time Scale ───────────────────────────────────────────────────────────────
+
+const MONTHS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+const DOW      = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const DOW_LONG = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const y1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - y1) / 86400000 + 1) / 7);
+}
+
+function getTicks(wStart, wEnd, band, projectStart, genericMode) {
+  const totalDays = daysBetween(wStart, wEnd);
+  const ticks = [];
+  function clip(d) { return Math.max(0, Math.min(totalDays, d)); }
+  function push(label, cur, next) {
+    const d0 = clip(daysBetween(wStart, cur));
+    const d1 = clip(daysBetween(wStart, next));
+    if (d1 > d0) ticks.push({ label, d0, d1 });
+  }
+  if (band === 'week') {
+    const weekOf = d => Math.floor(daysBetween(projectStart, d) / 7) + 1;
+    const offsetIntoWeek = ((daysBetween(projectStart, wStart) % 7) + 7) % 7;
+    let cur = addDays(wStart, -offsetIntoWeek);
+    while (cur < wEnd) {
+      const next = addDays(cur, 7);
+      push('W' + weekOf(cur), cur, next);
+      cur = next;
+    }
+  } else if (band === 'projectday' && projectStart) {
+    const dayOf = d => daysBetween(projectStart, d) + 1;
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      push('T' + dayOf(cur), cur, addDays(cur, 1));
+      cur = addDays(cur, 1);
+    }
+  } else if (band === 'year') {
+    let cur = new Date(wStart.getFullYear(), 0, 1);
+    while (cur < wEnd) {
+      const next = new Date(cur.getFullYear() + 1, 0, 1);
+      push(String(cur.getFullYear()), cur, next);
+      cur = next;
+    }
+  } else if (band === 'quarter') {
+    let cur = new Date(wStart.getFullYear(), Math.floor(wStart.getMonth() / 3) * 3, 1);
+    while (cur < wEnd) {
+      const q = Math.floor(cur.getMonth() / 3);
+      const next = new Date(cur.getFullYear(), (q + 1) * 3, 1);
+      push('Q' + (q + 1), cur, next);
+      cur = next;
+    }
+  } else if (band === 'month') {
+    let cur = new Date(wStart.getFullYear(), wStart.getMonth(), 1);
+    while (cur < wEnd) {
+      const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      push(MONTHS[cur.getMonth()], cur, next);
+      cur = next;
+    }
+  } else if (band === 'kw') {
+    const dow = wStart.getDay();
+    let cur = addDays(wStart, -(dow === 0 ? 6 : dow - 1));
+    while (cur < wEnd) {
+      const next = addDays(cur, 7);
+      push('KW ' + isoWeek(cur), cur, next);
+      cur = next;
+    }
+  } else if (band === 'day') {
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      // Im generic-Mode (Jahr 1900 = kein echtes Projektdatum) zeigt das day-Band T+N statt Kalendertag.
+      const label = genericMode && projectStart
+        ? 'T' + (daysBetween(projectStart, cur) + 1)
+        : String(cur.getDate());
+      push(label, cur, addDays(cur, 1));
+      cur = addDays(cur, 1);
+    }
+  }
+  return ticks;
+}
+
+// Wenn `Project starts …` nicht explizit gesetzt ist, leiten wir den Projektanfang aus dem
+// frühesten Task-Start (bzw. Milestone-Datum) ab — damit das projectday-Band immer sinnvolle T+N-Werte zeigt.
+function inferProjectStart(items) {
+  let min = null;
+  for (const it of items) {
+    const d = it.type === 'task' ? it.start : (it.type === 'milestone' ? it.date : null);
+    if (d && (!min || d < min)) min = d;
+  }
+  return min;
+}
+
+// Jahr + Monat immer; Quartal nie mit KW oder Tag; Tag nur < 28 Tage Fenster
+function getBands(ppd, totalDays, genericMode) {
+  if (genericMode) {
+    const showDay = totalDays < 28 || ppd >= 20;
+    return { bands: showDay ? ['week', 'day'] : ['week'], showDOW: false };
+  }
+  const showDay = totalDays < 28 || ppd >= 20;
+  const showKW  = ppd >= 5;
+  const showQtr = !showKW && totalDays > 90;
+  const showDOW = showDay && ppd >= 30;
+  const bands = ['year'];
+  if (showQtr) bands.push('quarter');
+  bands.push('month');
+  if (showKW)  bands.push('kw');
+  if (showDay) bands.push('day');
+  // projectday nur ohne DOW — sonst würde T+N zwischen Datum und Wochentag stehen.
+  if (showDay && !showDOW) bands.push('projectday');
+  return { bands, showDOW };
+}
+
+// ─── SVG Renderer ─────────────────────────────────────────────────────────────
+
+const C = {
+  sectionBg: '#1e3a4c', sectionFg: '#fff',
+  subsectionBg: '#dce8f2', subsectionFg: '#1e3a4c', subsectionAccent: '#2980b9',
+  headerBg1: '#2c6080', headerBg2: '#1e4d66', headerFg: '#fff',
+  taskBar: '#2980b9', taskFg: '#fff', taskFgOut: '#1e3a4c',
+  milestone: '#c0392b',
+  today: '#e74c3c',
+  rowBg: '#fff', rowAlt: '#f5f8fb',
+  grid: '#dce3e8', sep: '#c5cfd8',
+  note: '#999',
+};
+
+const LBL_MIN = 200;
+const LBL_MAX = 500;
+const NOTE_W  = 170;
+const ROW_H   = 24;
+const SEC_H   = 20;
+const SUB_H   = 18;
+const BAND_H  = 30;
+const BAR_H   = 14;
+const BAR_R   = 4;
+const FONT    = "'Source Sans 3',system-ui,sans-serif";
+const FS      = 12;
+const FS_SEC  = 13;
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Nur sichere URL-Schemata für Hyperlinks (`links to [[…]]`) zulassen. esc()
+// schützt hier NICHT: `javascript:alert(1)` braucht keine <>"&-Zeichen und würde
+// in einem SVG <a xlink:href> beim Klick ausgeführt. Erlaubt: http(s), mailto,
+// sowie relative/Fragment-Ziele. Alles andere → null (Link wird nicht gerendert).
+function safeHref(url) {
+  const u = String(url || '').trim();
+  return /^(https?:|mailto:|#|\.{0,2}\/)/i.test(u) ? u : null;
+}
+
+// User-Farben (`is colored in …`) gegen eine strikte Allowlist prüfen, bevor sie
+// in SVG-fill/stroke-Attribute gelangen. Verhindert Attribut-Breakout über " > etc.
+// Erlaubt: #rgb/#rgba/#rrggbb/#rrggbbaa und reine Farbnamen (z. B. GreenYellow).
+function safeColor(c) {
+  const v = String(c || '').trim();
+  return (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]+$/.test(v)) ? v : null;
+}
+
+// Echte Textbreite via Canvas.measureText messen, sobald DOM verfügbar ist.
+// Outer-Label-Hintergründe und labelW-Heuristik nutzen das Ergebnis, damit das
+// Background-Rect tatsächlich nur den Text abdeckt — die alte Heuristik
+// `s.length * fs * 0.58` überschätzt schmalbuchstabige Texte deutlich.
+// Fallback (Node-Smoke-Tests ohne DOM): alte Formel.
+const _measureCanvas = (typeof document !== 'undefined' && document.createElement)
+  ? (() => { try { const c = document.createElement('canvas'); return c.getContext ? c : null; } catch (e) { return null; } })()
+  : null;
+const _measureCtx = _measureCanvas && _measureCanvas.getContext ? _measureCanvas.getContext('2d') : null;
+const _measureCache = new Map();
+function approxTextW(s, fs, weight = 400) {
+  if (!_measureCtx) return s.length * fs * 0.58;
+  const key = `${weight}|${fs}|${s}`;
+  const cached = _measureCache.get(key);
+  if (cached !== undefined) return cached;
+  _measureCtx.font = `${weight} ${fs}px "Source Sans 3", system-ui, sans-serif`;
+  const w = _measureCtx.measureText(s).width;
+  _measureCache.set(key, w);
+  return w;
+}
+
+// Kürzt `text` mit Ellipsis auf `maxW` — gleiches Prinzip wie die Notiz-Spalten-Truncation
+// weiter unten, hier für den äußeren Label-Text (der sonst hart am SVG-Rand geclippt würde).
+function truncateToWidth(text, maxW, fs, weight = 400) {
+  if (approxTextW(text, fs, weight) <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && approxTextW(t + '…', fs, weight) > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
+
+// Gruppiert `[X] displays on same row as [Y]`-Items unter ihrem Host `Y` — liefert eine
+// Map von Host-Referenz (Name ODER Label von Y, wie im sameRowAs-Feld verwendet) auf die
+// Liste der Overlay-Labels. Gemeinsam genutzt von effectiveLabelW (Spaltenbreite) und
+// buildSVG (Zeilentext), damit beide Stellen dieselbe Zuordnung sehen und das linke Label
+// nicht nur den Host-Namen zeigt, sondern alle Tasks auf der gemeinsamen Zeile.
+function groupSameRowOverlays(items) {
+  const overlaysByHost = Object.create(null);
+  for (const it of items) {
+    if (it.type === 'dep' || !it.sameRowAs) continue;
+    const ownLabel = it.label || it.name || '';
+    (overlaysByHost[it.sameRowAs] || (overlaysByHost[it.sameRowAs] = [])).push(ownLabel);
+  }
+  return overlaysByHost;
+}
+
+function effectiveLabelW(items) {
+  let max = LBL_MIN;
+  const overlaysByHost = groupSameRowOverlays(items);
+  for (const it of items) {
+    if (it.type !== 'task' && it.type !== 'milestone') continue;
+    if (it.sameRowAs) continue; // eigenes Label wird beim Host mitgemessen, nicht separat
+    const own = it.label || it.name || '';
+    const overlays = overlaysByHost[it.name] || overlaysByHost[it.label] || [];
+    const combined = overlays.length ? [own, ...overlays].join(' / ') : own;
+    const w = approxTextW(combined, FS) + 20;
+    if (w > max) max = w;
+  }
+  return Math.min(LBL_MAX, Math.round(max));
+}
+
+function contrastColor(hex) {
+  // Erwartet #rrggbb. Bei Farbnamen oder Kurzformen (#rgb) ist die Luminanz nicht
+  // bestimmbar — dunkle Default-Textfarbe statt NaN-Vergleich.
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(hex))) return '#1e3a4c';
+  const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+  const lin = c => c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  const L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+  return 1.05/(L+0.05) >= (L+0.05)/0.088 ? '#fff' : '#1e3a4c';
+}
+
+function buildSVG(parsed, wStart, wEnd, ppd, closedDates = new Set(), closedWeekdays = new Set(), showDeps = false, criticalNodes = new Set(), criticalEdges = new Set(), collapsedSections = new Set(), showNotes = true, openOverrides = new Set(), showCurved = false) {
+  const items = parsed.rawItems;
+
+  // Direkte Vorgänger/Nachfolger pro Task/Milestone aus afterTask + dep-Pfeilen.
+  // Implizit-temporale Edges aus computeCriticalPath bleiben außen vor — die sind
+  // nur Render-Fallback, keine logische Abhängigkeit.
+  // Mapping vom internen Namen (Alias) zum Display-Label, damit der Tooltip
+  // die im Gantt sichtbaren Namen zeigt, nicht den technischen Alias.
+  const itemPreds = Object.create(null), itemSuccs = Object.create(null), itemLabels = Object.create(null);
+  for (const it of items) {
+    if (it.type === 'task' || it.type === 'milestone') {
+      itemPreds[it.name] = new Map();
+      itemSuccs[it.name] = new Map();
+      itemLabels[it.name] = it.label || it.name;
+    }
+  }
+  // Edge-Relation als kurzer Suffix für den Tooltip — Offset, working/calendar, SS/FS,
+  // Backward, End-Anchor werden sichtbar.
+  function edgeRelation(it, anchor /* 'after' | 'endAfter' */) {
+    const afterWhat = anchor === 'after' ? it.afterWhat : it.endAfterWhat;
+    const offset = anchor === 'after' ? (it.offset || 0) : (it.endOffset || 0);
+    const workingDays = anchor === 'after' ? !!it.offsetWorkDays : false; // endOffset hat aktuell keine working-Variante
+    const parts = [];
+    if (anchor === 'endAfter') {
+      parts.push(`ends at ${afterWhat === 'start' ? 'start' : 'end'}`);
+    } else if (afterWhat === 'start') {
+      parts.push('starts at start');
+    }
+    if (offset !== 0) {
+      const sign = offset > 0 ? '+' : '−';
+      const unit = workingDays ? ` working day${Math.abs(offset) === 1 ? '' : 's'}` : ` day${Math.abs(offset) === 1 ? '' : 's'}`;
+      parts.push(`${sign} ${Math.abs(offset)}${unit}`);
+    }
+    return parts.length ? ` (${parts.join(', ')})` : '';
+  }
+  for (const it of items) {
+    if ((it.type === 'task' || it.type === 'milestone') && it.afterTask && itemPreds[it.name] && itemSuccs[it.afterTask]) {
+      const rel = edgeRelation(it, 'after');
+      itemPreds[it.name].set(it.afterTask, rel);
+      itemSuccs[it.afterTask].set(it.name, rel);
+    }
+    if (it.type === 'task' && it.endAfterTask && itemPreds[it.name] && itemSuccs[it.endAfterTask]) {
+      const rel = edgeRelation(it, 'endAfter');
+      // Wenn schon afterTask edge auf den gleichen Vorgänger existiert: merge in einer Klammer
+      const merge = (existing, add) => {
+        if (!existing) return add;
+        if (!add) return existing;
+        return existing.slice(0, -1) + ', ' + add.slice(2, -1) + ')';
+      };
+      itemPreds[it.name].set(it.endAfterTask, merge(itemPreds[it.name].get(it.endAfterTask), rel));
+      itemSuccs[it.endAfterTask].set(it.name, merge(itemSuccs[it.endAfterTask].get(it.name), rel));
+    }
+    if (it.type === 'dep' && itemPreds[it.to] && itemSuccs[it.from]) {
+      // dep-Pfeil ist soft edge ohne Offset — keine relation-Info
+      if (!itemPreds[it.to].has(it.from)) itemPreds[it.to].set(it.from, '');
+      if (!itemSuccs[it.from].has(it.to)) itemSuccs[it.from].set(it.to, '');
+    }
+  }
+  // Separator `|` für die data-Attribute, weil Labels Kommas enthalten dürfen.
+  const namesToLabels = nameMap => [...nameMap.entries()].map(([n, rel]) => (itemLabels[n] || n) + rel).join('|');
+
+  const totalDays = daysBetween(wStart, wEnd);
+  const tlW = totalDays * ppd;
+  const hasNotes = showNotes && items.some(i => i.note);
+  const noteW = hasNotes ? NOTE_W : 0;
+  const labelW = effectiveLabelW(items);
+
+  const genericMode = !!(parsed.projectStart && parsed.projectStart.getFullYear() === 1900);
+  // Effektiver Projektanfang: explizit aus der `.puml` oder implizit aus dem frühesten Task/Milestone.
+  const effectiveProjectStart = parsed.projectStart || inferProjectStart(items);
+  const { bands, showDOW } = getBands(ppd, totalDays, genericMode);
+  const showKW  = bands.includes('kw') || bands.includes('week');
+  const showDay = bands.includes('day');
+  const showQtr = bands.includes('quarter');
+  const hdrH = BAND_H * (bands.length + (showDOW ? 1 : 0));
+
+  // Assign y positions (dep items are arrows only — no row)
+  // Filter: items unterhalb einer collapsed Section werden ausgeblendet,
+  // der Section-Header selbst bleibt sichtbar. Items mit `sameRowAs` werden
+  // aus dem vertikalen Layout ausgeschlossen und nach dem Pass als Overlay
+  // mit der Y-Position ihres Hosts (= Task auf den sie zeigen) eingefügt.
+  let y = hdrH;
+  let curSection = null;
+  let activeCollapsed = false;
+  const rows = items.filter(item => item.type !== 'dep' && !item.sameRowAs).filter(item => {
+    if (item.type === 'section') {
+      activeCollapsed = collapsedSections.has(item.name);
+      return true;
+    }
+    return !activeCollapsed;
+  }).map(item => {
+    if (item.type === 'section') curSection = item.name;
+    const h = item.type === 'section' ? SEC_H : item.type === 'subsection' ? SUB_H : ROW_H;
+    const barCenterY = y + h / 2;
+    const row = { ...item, y, h, barCenterY, section: curSection };
+    y += h;
+    return row;
+  });
+  // Overlay-Pass: Items mit `sameRowAs` bekommen Y vom Host und werden als Overlay-Row
+  // an `rows` angehängt (am Ende, damit sie nach den normalen Bars gerendert werden).
+  const rowByName = Object.create(null);
+  for (const r of rows) {
+    if (r.name) rowByName[r.name] = r;
+    if (r.label) rowByName[r.label] = r;
+  }
+  for (const item of items) {
+    if (item.type === 'dep' || !item.sameRowAs) continue;
+    const host = rowByName[item.sameRowAs];
+    if (!host) {
+      // Unauflösbar (Tippfehler, Zyklus, oder Ziel ist selbst ein sameRowAs-Overlay) —
+      // als eigene Standalone-Zeile ans Ende anhängen statt den Task stillschweigend
+      // verschwinden zu lassen (Warnung dazu kommt aus processInput()).
+      const h = ROW_H;
+      const barCenterY = y + h / 2;
+      rows.push({ ...item, y, h, barCenterY, section: curSection });
+      y += h;
+      continue;
+    }
+    const ownLabel = item.label || item.name || '';
+    // Overlay-Name dem Host-Label anhängen, damit die linke Label-Spalte beide Tasks
+    // zeigt statt nur den Host (siehe groupSameRowOverlays()).
+    (host.overlayLabels || (host.overlayLabels = [])).push(ownLabel);
+    rows.push({ ...item, y: host.y, h: host.h, barCenterY: host.barCenterY, section: host.section, isOverlay: true });
+  }
+  const totalH = y;
+  const totalW = labelW + tlW + noteW;
+
+  const g = []; // SVG elements
+
+  g.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${totalW}" height="${totalH}" data-hdrh="${hdrH}" data-labelw="${labelW}"`,
+         ` style="font-family:${FONT};font-size:${FS}px;display:block"`,
+         ` text-rendering="geometricPrecision">`);
+
+  // Background
+  g.push(`<rect width="${totalW}" height="${totalH}" fill="${C.rowBg}"/>`);
+
+  // Alternating row backgrounds. Merke `r._rowFill` pro Row, damit Outer-Label-Text
+  // später denselben Hintergrund als Notlösung gegen darunterliegende Pfeil-Linien
+  // bekommen kann.
+  let alt = false;
+  for (const r of rows) {
+    if (r.type === 'section') { alt = false; r._rowFill = C.sectionBg; continue; }
+    if (r.type === 'subsection') { r._rowFill = C.subsectionBg; continue; }
+    if (alt) {
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.rowAlt}"/>`);
+      r._rowFill = C.rowAlt;
+    } else {
+      r._rowFill = C.rowBg;
+    }
+    alt = !alt;
+  }
+
+  // Vertical grid lines: daily if showDay, weekly if showKW, else monthly
+  {
+    let gc, step;
+    if (showDay) {
+      gc = new Date(wStart); step = 'day';
+    } else if (showKW) {
+      const dow = wStart.getDay();
+      gc = addDays(wStart, -(dow === 0 ? 6 : dow - 1)); step = 'week';
+    } else {
+      gc = new Date(wStart.getFullYear(), wStart.getMonth(), 1); step = 'month';
+    }
+    while (gc < wEnd) {
+      const d = daysBetween(wStart, gc);
+      if (d > 0) {
+        const x = labelW + d * ppd;
+        g.push(`<line x1="${x}" y1="${hdrH}" x2="${x}" y2="${totalH}" stroke="${C.grid}" stroke-width="1"/>`);
+      }
+      if (step === 'day')   gc = addDays(gc, 1);
+      else if (step === 'week')  gc = addDays(gc, 7);
+      else gc = new Date(gc.getFullYear(), gc.getMonth() + 1, 1);
+    }
+  }
+
+  // Horizontal row separators
+  for (const r of rows) {
+    if (r.type !== 'section') {
+      g.push(`<line x1="0" y1="${r.y + r.h}" x2="${totalW}" y2="${r.y + r.h}" stroke="${C.grid}" stroke-width="0.5"/>`);
+    }
+  }
+
+  // Column separators
+  g.push(`<line x1="${labelW}" y1="0" x2="${labelW}" y2="${totalH}" stroke="${C.sep}" stroke-width="1"/>`);
+  g.push(`<line x1="${labelW + tlW}" y1="0" x2="${labelW + tlW}" y2="${totalH}" stroke="${C.sep}" stroke-width="1"/>`);
+
+  // Closed-day shading (only meaningful when ≥3px/day)
+  if (ppd >= 3 && (closedDates.size || closedWeekdays.size)) {
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      if (isClosedDay(cur, closedDates, closedWeekdays, openOverrides)) {
+        const d = daysBetween(wStart, cur);
+        const x = labelW + d * ppd;
+        g.push(`<rect x="${x}" y="${hdrH}" width="${ppd}" height="${totalH - hdrH}" fill="rgba(0,0,0,0.06)"/>`);
+      }
+      cur = addDays(cur, 1);
+    }
+  }
+
+  // Today line
+  const today = new Date();
+  if (today > wStart && today < wEnd) {
+    const tx = labelW + daysBetween(wStart, today) * ppd;
+    g.push(`<line x1="${tx}" y1="${hdrH}" x2="${tx}" y2="${totalH}" stroke="${C.today}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`);
+  }
+
+  // ── Sections / Subsections (vor Pfeilen rendern) ──────────────────────────
+  // Section-/Subsection-Header werden BEVOR der Arrow-Insert-Index gepushed,
+  // damit Pfeile später visuell ÜBER den Section-Hintergründen verlaufen — sonst
+  // verliert man bei langen Vertikal-Sprüngen den optischen Anschluss.
+  for (const r of rows) {
+    const my = r.barCenterY;
+    if (r.type === 'section') {
+      const isColl = collapsedSections.has(r.name);
+      const caret = isColl ? '▶' : '▼';
+      g.push(`<g data-section-name="${esc(r.name)}" tabindex="0" role="button" aria-expanded="${!isColl}" style="cursor:pointer">`);
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.sectionBg}"/>`);
+      g.push(`<text x="12" y="${my}" dy="0.35em" fill="${C.sectionFg}"`,
+             ` font-weight="700" font-size="${FS_SEC}">${caret}  ${esc(r.name)}</text>`);
+      g.push(`</g>`);
+    } else if (r.type === 'subsection') {
+      g.push(`<rect x="0" y="${r.y}" width="${totalW}" height="${r.h}" fill="${C.subsectionBg}"/>`);
+      g.push(`<rect x="0" y="${r.y}" width="3" height="${r.h}" fill="${C.subsectionAccent}"/>`);
+      g.push(`<text x="16" y="${my}" dy="0.35em" fill="${C.subsectionFg}"`,
+             ` font-weight="600" font-size="${FS}">${esc(r.name)}</text>`);
+      g.push(`<line x1="0" y1="${r.y + r.h}" x2="${totalW}" y2="${r.y + r.h}" stroke="${C.sep}" stroke-width="0.5"/>`);
+    }
+  }
+
+  // Position-Marker für Dependency-Arrows: sie werden später nach diesem Index
+  // in `g` eingefügt — also NACH Sections/Subsections (Pfeile drüber) und
+  // VOR Bars/Milestones (Bars drüber).
+  const _arrowsInsertIdx = g.length;
+
+  // ── Rows: Tasks & Milestones ──────────────────────────────────────────────
+
+  for (const r of rows) {
+    if (r.type === 'section' || r.type === 'subsection') continue;
+    // Bar-Mitte aus dem Layout-Pass übernehmen (siehe barCenterY im rows-Layout).
+    const my = r.barCenterY;
+
+    // Label column (right-aligned). If the item has a hyperlink (`[X] links to [[URL]]`),
+    // wrap the label in an SVG <a> with target="_blank" and add an underline cue.
+    // Overlay-Rows (displays on same row as): kein eigenes Label, Host-Label zeigt beide Namen.
+    const displayName = r.label || r.name;
+    // Bei `displays on same row as` zeigt das linke Label Host- UND Overlay-Namen zusammen
+    // (statt nur den Host, siehe groupSameRowOverlays()/overlayLabels).
+    const outerLabelText = r.overlayLabels && r.overlayLabels.length
+      ? [displayName, ...r.overlayLabels].join(' / ')
+      : displayName;
+    // Nur sichere URLs verlinken — javascript:/data:-Ziele werden verworfen (kein <a>).
+    const safeLink  = safeHref(r.link);
+    const linkOpen  = safeLink ? `<a xlink:href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">` : '';
+    const linkClose = safeLink ? `</a>` : '';
+    const linkStyle = safeLink ? ' style="cursor:pointer;text-decoration:underline"' : '';
+    if (!r.isOverlay) {
+      // Ohne Truncation würde ein zu langer Name hart am linken SVG-Rand geclippt
+      // (Root-<svg> ohne overflow="visible") — mit Ellipsis + <title> für den Volltext.
+      const truncatedLabel = truncateToWidth(outerLabelText, labelW - 20, FS);
+      g.push(linkOpen);
+      g.push(`<text x="${labelW - 10}" y="${my}" dy="0.35em" text-anchor="end"`,
+             ` fill="${C.taskFgOut}" font-size="${FS}"${linkStyle}>${esc(truncatedLabel)}`,
+             truncatedLabel !== outerLabelText ? `<title>${esc(outerLabelText)}</title>` : '',
+             `</text>`);
+      g.push(linkClose);
+    }
+
+    if (r.type === 'task') {
+      if (r.parseError) {
+        // Dummy-Task: keine Bar, aber sichtbarer Hinweis auf der Bar-Spur
+        g.push(`<rect x="${labelW}" y="${r.y}" width="${tlW}" height="${r.h}" fill="rgba(192,57,43,0.06)"/>`);
+        g.push(`<text x="${labelW + 6}" y="${my}" dy="0.35em" fill="#c0392b" font-size="${FS}" font-weight="600">⚠ Syntaxfehler in Zeile ${r.sourceLine}</text>`);
+        continue;
+      }
+      if (!r.start || !r.end) continue;
+      const sd = daysBetween(wStart, r.start);
+      const ed = daysBetween(wStart, r.end);
+      const sd2 = Math.max(0, sd);
+      const ed2 = Math.min(totalDays, ed);
+
+      if (sd2 < ed2) {
+        const bx = labelW + sd2 * ppd;
+        const bw = (ed2 - sd2) * ppd;
+        const by = my - BAR_H / 2;
+
+        const barFill = safeColor(r.barColor) || C.taskBar;
+        const barFg   = safeColor(r.textColor) || contrastColor(barFill);
+
+        const noteAttr = r.note ? ` data-note="${esc(r.note)}"` : '';
+        const barStyle = safeLink ? ' style="cursor:pointer"' : '';
+        g.push(linkOpen);
+        const pctAttr = r.pct > 0 ? ` data-pct="${Math.round(r.pct * 100)}"` : '';
+        const predsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
+        const succsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
+        const predsAttr = predsStr ? ` data-preds="${esc(predsStr)}"` : '';
+        const succsAttr = succsStr ? ` data-succs="${esc(succsStr)}"` : '';
+        g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-start="${dateToISO(r.start)}" data-end="${dateToISO(r.end)}" data-section="${esc(r.section || '')}" tabindex="0"${noteAttr}${barStyle}${pctAttr}${predsAttr}${succsAttr}>`);
+        g.push(`<rect class="bar-shape" x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="${BAR_R}" fill="${barFill}"/>`);
+
+        // Progress overlay
+        if (r.pct > 0) {
+          const pw = bw * r.pct;
+          g.push(`<rect x="${bx}" y="${by}" width="${pw}" height="${BAR_H}" rx="${BAR_R}" fill="rgba(0,0,0,0.25)"/>`);
+          if (pw >= BAR_R && pw < bw - BAR_R)
+            g.push(`<rect x="${bx + pw - BAR_R}" y="${by}" width="${BAR_R}" height="${BAR_H}" fill="rgba(0,0,0,0.25)"/>`);
+        }
+
+        // Clip indicators
+        if (sd < 0)
+          g.push(`<polygon points="${bx},${by} ${bx+7},${by+BAR_H/2} ${bx},${by+BAR_H}" fill="#fff" opacity="0.4"/>`);
+        if (ed > totalDays)
+          g.push(`<polygon points="${bx+bw},${by} ${bx+bw-7},${by+BAR_H/2} ${bx+bw},${by+BAR_H}" fill="#fff" opacity="0.4"/>`);
+
+        // Label: inside if fits, else right of bar. weight=700, weil das Label
+        // bold gerendert wird — die Canvas-Messung muss die gleiche Metrik nutzen.
+        const tw = approxTextW(displayName, FS, 700);
+        const labelInside = tw + 10 < bw;
+        let labelEndX = bx + bw;
+        if (labelInside) {
+          g.push(`<text x="${bx + bw/2}" y="${my}" dy="0.35em" text-anchor="middle"`,
+                 ` fill="${barFg}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
+        } else {
+          const lx = Math.min(bx + bw + 5, labelW + tlW - 4);
+          // Hintergrund-Rect in Zeilenfarbe — verhindert, dass Pfeile durch den
+          // Outer-Label-Text laufen und ihn unleserlich machen. Minimales padX,
+          // damit der Hintergrund nicht spürbar breiter als der Text wirkt.
+          const padX = 1, padY = 2;
+          g.push(`<rect x="${lx - padX}" y="${my - FS/2 - padY}" width="${tw + 2*padX}" height="${FS + 2*padY}" fill="${r._rowFill || C.rowBg}"/>`);
+          g.push(`<text x="${lx}" y="${my}" dy="0.35em"`,
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="700">${esc(displayName)}</text>`);
+          labelEndX = lx + tw;
+        }
+
+        // Critical frame zuletzt — umschließt Bar + ggf. outer label
+        if (criticalNodes.has(r.name)) {
+          const fX = bx - 2;
+          const fW = Math.max(bw + 4, labelEndX + 2 - fX);
+          g.push(`<rect x="${fX}" y="${by - 2}" width="${fW}" height="${BAR_H + 4}" rx="${BAR_R + 1}" fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
+        }
+
+        g.push(`</g>`);
+        g.push(linkClose);
+      }
+
+    } else if (r.type === 'milestone') {
+      if (!r.date) continue;
+      const md = daysBetween(wStart, r.date);
+      const sz = 9;
+      const szDays = sz / ppd;
+      if (md >= -szDays && md <= totalDays + szDays) {
+        const mx = labelW + md * ppd;
+        const noteAttrMS = r.note ? ` data-note="${esc(r.note)}"` : '';
+        const msStyle = safeLink ? ' style="cursor:pointer"' : '';
+        const msPredsStr = itemPreds[r.name] ? namesToLabels(itemPreds[r.name]) : '';
+        const msSuccsStr = itemSuccs[r.name] ? namesToLabels(itemSuccs[r.name]) : '';
+        const msPredsAttr = msPredsStr ? ` data-preds="${esc(msPredsStr)}"` : '';
+        const msSuccsAttr = msSuccsStr ? ` data-succs="${esc(msSuccsStr)}"` : '';
+        g.push(linkOpen);
+        g.push(`<g data-name="${esc(displayName)}" data-key="${esc(r.name)}" data-ms="${dateToISO(r.date)}" data-section="${esc(r.section || '')}" tabindex="0"${noteAttrMS}${msStyle}${msPredsAttr}${msSuccsAttr}>`);
+        g.push(`<polygon class="ms-shape" points="${mx},${my-sz} ${mx+sz},${my} ${mx},${my+sz} ${mx-sz},${my}"`,
+               ` fill="${C.milestone}"/>`);
+        if (criticalNodes.has(r.name)) {
+          const oz = sz + 3;
+          g.push(`<polygon points="${mx},${my-oz} ${mx+oz},${my} ${mx},${my+oz} ${mx-oz},${my}"`,
+                 ` fill="none" stroke="#c0392b" stroke-width="1.5"/>`);
+        }
+        {
+          const _mlx = mx + sz + 5;
+          const _mtw = approxTextW(displayName, FS, 600);
+          const _mpadX = 1, _mpadY = 2;
+          g.push(`<rect x="${_mlx - _mpadX}" y="${my - FS/2 - _mpadY}" width="${_mtw + 2*_mpadX}" height="${FS + 2*_mpadY}" fill="${r._rowFill || C.rowBg}"/>`);
+          g.push(`<text x="${_mlx}" y="${my}" dy="0.35em"`,
+                 ` fill="${C.taskFgOut}" font-size="${FS}" font-weight="600">${esc(displayName)}</text>`);
+        }
+        g.push(`</g>`);
+        g.push(linkClose);
+      }
+    }
+
+    // Notiz -- erste Zeile als Vorschau in der rechten Notiz-Spalte.
+    if (hasNotes && r.note) {
+      const maxNoteW = NOTE_W - 20;
+      const isMultiline = r.note.includes('\n');
+      const firstLine = isMultiline ? r.note.split('\n')[0] : r.note;
+      let noteText = firstLine;
+      while (noteText.length > 1 && approxTextW(noteText, FS) > maxNoteW) noteText = noteText.slice(0, -1);
+      const truncated = (noteText !== firstLine);
+      if (truncated) noteText = noteText.slice(0, -1) + '…';
+      else if (isMultiline) noteText = noteText + ' …';
+      // data-note + cursor:help → Hover zeigt den vollen Notiztext im Tooltip
+      // (mousemove-Handler matched [data-note] außerhalb einer [data-name]-Gruppe).
+      g.push(`<text x="${labelW + tlW + 10}" y="${my}" dy="0.35em"`,
+             ` data-note="${esc(r.note)}" style="cursor:help"`,
+             ` fill="${C.note}" font-size="${FS}">${esc(noteText)}</text>`);
+    }
+  }
+
+  // ── Dependency arrows ─────────────────────────────────────────────────────
+  // Werden in `arrows[]` aufgebaut und ans `_arrowsInsertIdx` in `g` eingefügt,
+  // damit sie HINTER den Bars/Milestones liegen.
+
+  if (showDeps) {
+    const arrows = [];
+    const rowMap = Object.create(null);
+    for (const r of rows) {
+      if (r.type === 'task' || r.type === 'milestone') rowMap[r.name] = r;
+    }
+    // Lookup für Constraint-Form: dep.to → afterTask + endAfterTask-Info.
+    // Wenn der dep-Pfeil zu einer expliziten Constraint passt, wird die Pfeil-Form
+    // entsprechend gewählt: SS (Start-Start), FF (Finish-Finish), SF (Start-Finish),
+    // FS (Finish-Start, default).
+    const itemByName = Object.create(null);
+    for (const it of items) if (it.name) itemByName[it.name] = it;
+    const ARW = 6; // arrowhead size
+
+    // Lane-Routing für Kollisionsvermeidung: Pfeile mit überlappendem Y-Bereich UND
+    // benachbartem midX bekommen je einen kleinen X-Offset (4 px pro Lane). Damit
+    // überlagern sich vertikale Stub-Linien nicht mehr.
+    const lanes = [];
+    const LANE_PX = 4;
+    function assignLane(y_low, y_high, midX_base) {
+      for (let i = 0; i < lanes.length; i++) {
+        const L = lanes[i];
+        if (L.y_low < y_high && y_low < L.y_high && Math.abs(L.midX_base - midX_base) < 10) {
+          L.count++;
+          return L.count - 1;
+        }
+      }
+      lanes.push({ y_low, y_high, midX_base, count: 1 });
+      return 0;
+    }
+
+    // Anti-Crossing-Heuristik: Knoten mit mehreren Outgoing/Incoming bündeln ihre
+    // Pfeile nah an sich — vertikale Stubs aller Out-Pfeile von A starten am gleichen
+    // X kurz nach A, statt mittig zwischen A und B zu verlaufen. Dadurch reduziert
+    // sich der Bereich, in dem fremde Pfeile gekreuzt werden.
+    const outDeg = Object.create(null), inDeg = Object.create(null);
+    for (const d of items.filter(i => i.type === 'dep')) {
+      outDeg[d.from] = (outDeg[d.from] || 0) + 1;
+      inDeg[d.to] = (inDeg[d.to] || 0) + 1;
+    }
+
+    // Bar-Avoidance: vertikale Stub-Linien sollen nicht durch fremde Bars laufen.
+    // Sammle alle sichtbaren Task-Bars einmal vor dem Loop — pro Pfeil prüfen wir,
+    // ob midX_base in einer Zwischen-Bar landet und verschieben ggf. ausweichend.
+    const obstacleBars = rows
+      .filter(r => (r.type === 'task' || r.type === 'milestone') && (r.start || r.date))
+      .map(r => {
+        const s = r.start || r.date;
+        const e = r.end || r.date;
+        const sd = Math.max(0, daysBetween(wStart, s));
+        const ed = Math.min(totalDays, daysBetween(wStart, e));
+        return { y: r.barCenterY, x0: labelW + sd * ppd, x1: labelW + ed * ppd };
+      })
+      // Nach y sortiert, damit obstacleHit() früh abbrechen kann statt bei jedem Aufruf
+      // (bis zu 20× pro Pfeil) die komplette Liste zu scannen.
+      .sort((a, b) => a.y - b.y);
+    function obstacleHit(midX, y_low, y_high) {
+      for (const b of obstacleBars) {
+        if (b.y >= y_high - 2) break; // sortiert ⇒ alles Weitere liegt noch tiefer, kein Treffer mehr möglich
+        // Nur Bars in Zeilen ZWISCHEN Source und Target (exklusiv beide Endpunkte).
+        if (b.y <= y_low + 2) continue;
+        // 4 px Sicherheitsabstand zur Bar-Kante.
+        if (midX > b.x0 - 4 && midX < b.x1 + 4) return true;
+      }
+      return false;
+    }
+
+    for (const dep of items.filter(i => i.type === 'dep')) {
+      const rA = rowMap[dep.from], rB = rowMap[dep.to];
+      if (!rA || !rB) continue;
+      if (rA.type === 'task' && (!rA.start || !rA.end)) continue;
+      if (rB.type === 'task' && (!rB.start || !rB.end)) continue;
+
+      const startDateA = rA.type === 'milestone' ? rA.date : rA.start;
+      const endDateA   = rA.type === 'milestone' ? rA.date : rA.end;
+      const startDateB = rB.type === 'milestone' ? rB.date : rB.start;
+      const endDateB   = rB.type === 'milestone' ? rB.date : rB.end;
+      if (!startDateA || !endDateA || !startDateB || !endDateB) continue;
+
+      const sdA = daysBetween(wStart, startDateA);
+      const edA = daysBetween(wStart, endDateA);
+      const sdB = daysBetween(wStart, startDateB);
+      const edB = daysBetween(wStart, endDateB);
+
+      // Skip if source bar is entirely outside window, or target starts after window
+      if (edA < 0 || sdA > totalDays || sdB > totalDays) continue;
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      const X_sA = labelW + clamp(sdA, 0, totalDays) * ppd;  // links A
+      const X_eA = labelW + clamp(edA, 0, totalDays) * ppd;  // rechts A
+      const X_sB = labelW + clamp(sdB, 0, totalDays) * ppd;  // links B
+      const X_eB = labelW + clamp(edB, 0, totalDays) * ppd;  // rechts B
+      const midY_A = rA.barCenterY;
+      const midY_B = rB.barCenterY;
+
+      // Constraint-Form aus zugehörigem afterTask/endAfterTask des Nachfolgers ableiten
+      // (dieselbe Klassifikation wie in computeCriticalPath, siehe classifyConstraint()).
+      // SS: B startet wenn A startet. FF: B endet wenn A endet. SF: B endet wenn A startet.
+      const toItem = itemByName[dep.to];
+      const constraint = toItem ? classifyConstraint(toItem, dep.from) : null;
+      const isSS = constraint?.kind === 'SS';
+      const isFF = constraint?.kind === 'FF';
+      const isSF = constraint?.kind === 'SF';
+      // sonst: FS (Finish-Start, klassischer Default)
+
+      // Startpunkt am Vorgänger und Endpunkt am Nachfolger je nach Form
+      let X_from, X_to;
+      if (isSS)       { X_from = X_sA; X_to = X_sB; }
+      else if (isFF)  { X_from = X_eA; X_to = X_eB; }
+      else if (isSF)  { X_from = X_sA; X_to = X_eB; }
+      else            { X_from = X_eA; X_to = X_sB; } // FS default
+
+      // Orthogonales Routing (klassischer Gantt-Pfeil): horizontaler Stub am Vorgänger,
+      // vertikaler Sprung zur Nachfolger-Zeile, horizontal zum Nachfolger-Anchor.
+      // — Wenn ausreichend horizontale Lücke (gap > 2*stub): vertikal in der Mitte.
+      // — Sonst (Stub-Offset): rechts oder links vom Vorgänger-Anchor je nach Richtung.
+      const stub = 8;
+      const dir = X_to >= X_from ? 1 : -1;
+      const gap = Math.abs(X_to - X_from);
+      const fromMulti = (outDeg[dep.from] || 0) >= 2;
+      const toMulti = (inDeg[dep.to] || 0) >= 2;
+      let midX_base;
+      if (gap <= 2 * stub) {
+        midX_base = X_from + dir * stub;
+      } else if (fromMulti && !toMulti) {
+        // Multi-Out-Source: alle Pfeile von A bündeln sich kurz nach A.
+        midX_base = X_from + dir * stub;
+      } else if (toMulti && !fromMulti) {
+        // Multi-In-Target: alle Pfeile zu B bündeln sich kurz vor B.
+        midX_base = X_to - dir * stub;
+      } else {
+        // 1-zu-1 oder beide Multi: mittig zwischen Source und Target.
+        midX_base = X_from + dir * (gap / 2);
+      }
+      // Bar-Avoidance: bei langen vertikalen Sprüngen (>1.5 Zeilen) prüfen,
+      // ob midX_base durch eine Zwischen-Bar läuft. Falls ja, in kleinen Schritten
+      // ausweichen — Range bleibt zwischen X_from und X_to (mit etwas Slack).
+      const y_low_avoid = Math.min(midY_A, midY_B);
+      const y_high_avoid = Math.max(midY_A, midY_B);
+      if (y_high_avoid - y_low_avoid > ROW_H * 1.5 && obstacleHit(midX_base, y_low_avoid, y_high_avoid)) {
+        const xMin = Math.min(X_from, X_to) - 30;
+        const xMax = Math.max(X_from, X_to) + 30;
+        for (let delta = 6; delta <= 120; delta += 6) {
+          const candA = midX_base + delta, candB = midX_base - delta;
+          if (candA <= xMax && !obstacleHit(candA, y_low_avoid, y_high_avoid)) { midX_base = candA; break; }
+          if (candB >= xMin && !obstacleHit(candB, y_low_avoid, y_high_avoid)) { midX_base = candB; break; }
+        }
+      }
+      // Lane-Offset bei kollidierenden vertikalen Stub-Linien.
+      const y_low = Math.min(midY_A, midY_B);
+      const y_high = Math.max(midY_A, midY_B);
+      const laneIdx = assignLane(y_low, y_high, midX_base);
+      const midX = midX_base + laneIdx * LANE_PX * dir;
+      // Pfeilspitze 2px vor dem Anker des Nachfolgers, damit sie nicht im Bar verschwindet.
+      const arrowTipX = X_to - dir * 2;
+      // showCurved: kubische Bezier-S-Kurve zwischen Start und Pfeilspitze, ein Kontroll-Punkt
+      // je Endpunkt mit horizontalem Tangenten-Versatz von max(20px, gap/3). Sonst klassisch
+      // orthogonal (H-V-H).
+      let path;
+      if (showCurved) {
+        const tangent = Math.max(20, Math.abs(arrowTipX - X_from) / 3);
+        const c1X = X_from + dir * tangent;
+        const c2X = arrowTipX - dir * tangent;
+        path = `M ${X_from} ${midY_A} C ${c1X} ${midY_A}, ${c2X} ${midY_B}, ${arrowTipX} ${midY_B}`;
+      } else {
+        path = `M ${X_from} ${midY_A} H ${midX} V ${midY_B} H ${arrowTipX}`;
+      }
+      const isCritEdge = criticalEdges.has(dep.from + '→' + dep.to);
+      const depColor = isCritEdge ? '#c0392b' : '#888';
+      const depWidth = isCritEdge ? '1.6' : '1.2';
+      // Form für Tooltip ableiten (FS default, sonst aus Constraint).
+      const form = isSS ? 'SS' : isFF ? 'FF' : isSF ? 'SF' : 'FS';
+      arrows.push(`<g class="dep-arrow" data-from="${esc(dep.from)}" data-to="${esc(dep.to)}" data-form="${form}">`);
+      arrows.push(`<path d="${path}" fill="none" stroke="${depColor}" stroke-width="${depWidth}" stroke-linejoin="round"/>`);
+
+      // Arrowhead — Spitze in Richtung Nachfolger-Anchor.
+      const tipBackX = arrowTipX - dir * ARW;
+      arrows.push(`<polygon points="${arrowTipX},${midY_B} ${tipBackX},${midY_B - ARW/2} ${tipBackX},${midY_B + ARW/2}" fill="${depColor}"/>`);
+      arrows.push(`</g>`);
+    }
+    // Pfeile vor die Bars/Milestones im SVG einfügen (z-Order: Bars über Pfeilen).
+    g.splice(_arrowsInsertIdx, 0, ...arrows);
+  }
+
+  // ── Header (drawn last = on top) ──────────────────────────────────────────
+
+  g.push('<rect x="0" y="0" width="' + totalW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+
+  // Render each band in order (top to bottom)
+  const bandFontSize = { year: 13, quarter: 12, month: 12, kw: 11, day: 11, week: 11, projectday: 10 };
+  const bandFontWeight = { year: '700', quarter: '600', month: '600', kw: '600', day: '600', week: '600', projectday: '500' };
+  const bandMinW = { year: 28, quarter: 24, month: 14, kw: 18, day: 10, week: 18, projectday: 14 };
+
+  for (let bi = 0; bi < bands.length; bi++) {
+    const bName = bands[bi];
+    const by = BAND_H * bi;
+    const fs = bandFontSize[bName];
+    const fw = bandFontWeight[bName];
+    const minW = bandMinW[bName];
+    const ticks = getTicks(wStart, wEnd, bName, effectiveProjectStart, genericMode);
+    for (let i = 0; i < ticks.length; i++) {
+      const t = ticks[i];
+      const x = labelW + t.d0 * ppd, w = (t.d1 - t.d0) * ppd;
+      if (i % 2 === 1) g.push('<rect x="' + x + '" y="' + by + '" width="' + w + '" height="' + BAND_H + '" fill="' + C.headerBg2 + '"/>');
+      g.push('<line x1="' + x + '" y1="' + by + '" x2="' + x + '" y2="' + (by + BAND_H) + '" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>');
+      if (w > minW) {
+        // Year-Band wiederholt das Label alle ~500 px, damit beim Reinzoomen + horizontalem Scrollen die Jahreszahl immer im Sichtfenster bleibt.
+        const repeat = (bName === 'year') ? Math.max(1, Math.floor(w / 500)) : 1;
+        for (let k = 0; k < repeat; k++) {
+          const lx = Math.round(x + w * (k + 0.5) / repeat);
+          g.push('<text x="' + lx + '" y="' + (by + BAND_H/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="' + fw + '" font-size="' + fs + '">' + esc(t.label) + '</text>');
+        }
+      }
+    }
+  }
+
+  // DOW band — one cell per day, date + weekday
+  if (showDOW) {
+    const by = BAND_H * bands.length;
+    let cur = new Date(wStart);
+    while (cur < wEnd) {
+      const d = daysBetween(wStart, cur);
+      const x = labelW + d * ppd;
+      const wd = cur.getDay();
+      const isWeekend = wd === 0 || wd === 6;
+      const bg = isWeekend ? 'rgba(0,0,0,0.20)' : d % 2 === 0 ? 'rgba(0,0,0,0.06)' : 'transparent';
+      g.push('<rect x="' + x + '" y="' + by + '" width="' + ppd + '" height="' + BAND_H + '" fill="' + bg + '"/>');
+      g.push('<line x1="' + x + '" y1="' + by + '" x2="' + x + '" y2="' + hdrH + '" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>');
+      const cy = by + BAND_H / 2;
+      g.push('<text x="' + Math.round(x + ppd/2) + '" y="' + cy + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-size="11" opacity="0.9">' + DOW[wd] + '</text>');
+      cur = addDays(cur, 1);
+    }
+  }
+
+  // Label column header
+  g.push('<rect x="0" y="0" width="' + labelW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+  if (parsed.title) {
+    g.push('<text x="' + (labelW/2) + '" y="' + (hdrH/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="700" font-size="13">' + esc(parsed.title) + '</text>');
+  }
+
+  // Notes column header
+  if (hasNotes) {
+    g.push('<rect x="' + (labelW+tlW) + '" y="0" width="' + noteW + '" height="' + hdrH + '" fill="' + C.headerBg1 + '"/>');
+    g.push('<text x="' + (labelW+tlW+noteW/2) + '" y="' + (hdrH/2) + '" dy="0.35em" text-anchor="middle" fill="' + C.headerFg + '" font-weight="700" font-size="11">Notizen</text>');
+  }
+
+  // Header bottom border
+  g.push('<line x1="0" y1="' + hdrH + '" x2="' + totalW + '" y2="' + hdrH + '" stroke="' + C.sep + '" stroke-width="1"/>');
+
+  g.push('</svg>');
+  return g.join('');
+}
+
+// ─── App State & Logic ────────────────────────────────────────────────────────
+
+const state = {
+  parsed: null, rawText: null, wStart: null, wEnd: null, ppd: null,
+  cp: { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false },
+  fitMode: false,
+  collapsedSections: new Set(),
+  windowMode: 'auto',          // 'auto' | 'manual'
+};
+
+function autoWindow(items) {
+  let lo = null, hi = null;
+  for (const it of items) {
+    const dates = it.type === 'milestone' ? [it.date] : [it.start, it.end];
+    for (const d of dates) {
+      if (!d) continue;
+      if (!lo || d < lo) lo = d;
+      if (!hi || d > hi) hi = d;
+    }
+  }
+  if (!lo) { lo = new Date(); hi = addDays(lo, 90); }
+  return { start: addDays(lo, -7), end: addDays(hi, 14) };
+}
+
+function autoZoom(wStart, wEnd, items) {
+  const wrapEl = document.getElementById('svg-wrap');
+  const w = (wrapEl && wrapEl.clientWidth) || 900;
+  const days = daysBetween(wStart, wEnd);
+  const labelW = effectiveLabelW(items || []);
+  // Note-Spalte einbeziehen — sonst landet sie außerhalb des sichtbaren Bereichs (Bug bis v26.5.42).
+  const hasNotes = (items || []).some(i => i && i.note);
+  const showNotesEl = document.getElementById('chk-notes');
+  const showNotes = showNotesEl ? showNotesEl.checked : true;
+  const noteW = (showNotes && hasNotes) ? NOTE_W : 0;
+  return Math.min(200, Math.max(0.5, (w - labelW - noteW - 40) / days));
+}
+
+function applyFit() {
+  if (!state.parsed || !state.wStart || !state.wEnd) return;
+  const days = daysBetween(state.wStart, state.wEnd);
+  const showNotes = document.getElementById('chk-notes').checked;
+  const noteW = (showNotes && state.parsed.rawItems.some(i => i.note)) ? NOTE_W : 0;
+  const labelW = effectiveLabelW(state.parsed.rawItems);
+  const wrap = document.getElementById('svg-wrap');
+  const avail = (wrap.clientWidth || 900) - labelW - noteW - 16; // 16px Padding-Reserve
+  const ppd = days > 0 ? avail / days : 200;
+  state.ppd = Math.min(200, Math.max(0.2, ppd));
+  render();
+}
+
+function fitToPage() {
+  if (!state.parsed) return;
+  state.windowMode = 'auto';
+  const { start, end } = autoWindow(state.parsed.rawItems);
+  state.wStart = start;
+  state.wEnd = end;
+  setDateInputs(start, end);
+  state.fitMode = true;
+  if (typeof savePrefs === 'function') savePrefs();
+  applyFit();
+}
+
+function setDateInputs(s, e) {
+  document.getElementById('date-from').value = dateToISO(s);
+  document.getElementById('date-to').value   = dateToISO(e);
+}
+
+function render() {
+  if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
+  if (window.__resetDepHover) window.__resetDepHover();
+  let svg;
+  try {
+    const showMS    = document.getElementById('chk-milestones').checked;
+    const showNotes = document.getElementById('chk-notes').checked;
+    const showDeps  = document.getElementById('chk-deps').checked;
+    const showCurved = document.getElementById('chk-curved').checked;
+    const showCrit  = document.getElementById('chk-critical').checked;
+    const parsedView = showMS ? state.parsed : { ...state.parsed, rawItems: state.parsed.rawItems.filter(it => it.type !== 'milestone') };
+    const cn = showCrit ? state.cp.criticalNodes : new Set();
+    const ce = showCrit ? state.cp.criticalEdges : new Set();
+    svg = buildSVG(parsedView, state.wStart, state.wEnd, state.ppd,
+                   state.parsed.closedDates, state.parsed.closedWeekdays, showDeps, cn, ce,
+                   state.collapsedSections, showNotes, state.parsed.openOverrides, showCurved);
+  } catch (e) {
+    // Render-Fehler: bestehendes SVG NICHT antasten, nur Warnung anzeigen.
+    showWarnings([], 'Render-Fehler: ' + (e.message || e));
+    return;
+  }
+  const svgWrap = document.getElementById('svg-wrap');
+  svgWrap.innerHTML = svg;
+
+  // Sticky overlays: header row (top) + label column (left)
+  const chartSvg = svgWrap.querySelector('svg');
+  if (chartSvg) {
+    const totalH = +chartSvg.getAttribute('height');
+    const totalW = +chartSvg.getAttribute('width');
+    const hdrH   = +chartSvg.getAttribute('data-hdrh');
+    const labelW = +chartSvg.getAttribute('data-labelw') || 200;
+
+    // Sticky header (top) -- scrolls horizontally, stays at top
+    const hdrClone = chartSvg.cloneNode(true);
+    hdrClone.setAttribute('viewBox', `0 0 ${totalW} ${hdrH}`);
+    hdrClone.setAttribute('width', String(totalW));
+    hdrClone.setAttribute('height', String(hdrH));
+    hdrClone.setAttribute('overflow', 'hidden');
+    hdrClone.style.display = 'block';
+    const stickyTop = document.createElement('div');
+    stickyTop.className = 'sticky-overlay';
+    stickyTop.style.cssText = `position:sticky;top:0;width:${totalW}px;height:${hdrH}px;` +
+      `pointer-events:none;z-index:6;overflow:hidden;`;
+    stickyTop.appendChild(hdrClone);
+    svgWrap.insertBefore(stickyTop, chartSvg);
+    chartSvg.style.marginTop = '-' + hdrH + 'px';
+
+    // Sticky label column (left) -- scrolls vertically, stays at left
+    const lblClone = chartSvg.cloneNode(true);
+    lblClone.setAttribute('viewBox', `0 0 ${labelW} ${totalH}`);
+    lblClone.setAttribute('width', String(labelW));
+    lblClone.setAttribute('height', String(totalH));
+    lblClone.setAttribute('overflow', 'hidden');
+    lblClone.style.display = 'block';
+    const stickyLeft = document.createElement('div');
+    stickyLeft.className = 'sticky-overlay';
+    stickyLeft.style.cssText = `position:sticky;left:0;width:${labelW}px;height:${totalH}px;` +
+      `margin-top:-${totalH}px;pointer-events:none;z-index:5;`;
+    stickyLeft.appendChild(lblClone);
+    svgWrap.appendChild(stickyLeft);
+  }
+
+  const days = daysBetween(state.wStart, state.wEnd);
+  const bandLabel = ({year:"Jahr",quarter:"Quartal",month:"Monat",kw:"KW",week:"Woche",day:"Tag",projectday:"Projekttag"})[getBands(state.ppd, days, state.parsed?.projectStart?.getFullYear()===1900).bands.at(-1)];
+  document.getElementById('zoom-label').textContent =
+    `${state.ppd.toFixed(1)} px/Tag · ${bandLabel}`;
+}
+
+// Dismiss-Flag pro processInput-Lauf: Close-X versteckt das Banner sofort.
+// Beim nächsten processInput-Aufruf (Edit/Reload/Datei-Wechsel) wird das Flag
+// am Anfang zurückgesetzt → Banner erscheint wieder, auch wenn die Warnungen
+// inhaltlich identisch sind. Damit ist „Edit gemacht → Status erneut prüfen"
+// der erwartete Workflow.
+let _warnDismissed = false;
+function showWarnings(warnings, fatalMsg) {
+  const b = document.getElementById('warn-banner');
+  const hasAny = (warnings && warnings.length > 0) || !!fatalMsg;
+  b.replaceChildren();
+  if (!hasAny) { b.style.display = 'none'; _warnDismissed = false; return; }
+  if (_warnDismissed) { b.style.display = 'none'; return; }
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'warn-close';
+  closeBtn.type = 'button';
+  closeBtn.title = 'Warnungen und Source-Preview ausblenden (Safe-Mode für Präsentation — erscheinen beim nächsten Edit wieder)';
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => {
+    _warnDismissed = true;
+    b.style.display = 'none';
+    // Safe-Mode: auch die fehlerhafte-Zeilen-Liste im linken Panel ausblenden.
+    const sp = document.getElementById('source-preview');
+    if (sp) sp.style.display = 'none';
+  });
+  b.appendChild(closeBtn);
+  if (fatalMsg) {
+    const d = document.createElement('div');
+    d.className = 'warn-fatal';
+    d.textContent = fatalMsg;
+    b.appendChild(d);
+  }
+  // Banner ist bereits selbst scrollbar (max-height + overflow-y:auto, siehe CSS) —
+  // keine künstliche Begrenzung mehr nötig, die den Rest unerreichbar machte.
+  for (const w of (warnings || [])) {
+    const rawCut = w.raw && w.raw.length > 50 ? w.raw.slice(0, 50) + '…' : (w.raw || '');
+    const prefix = w.lineNum > 0 ? `Zeile ${w.lineNum}: ` : '';
+    const fullText = prefix + w.reason + (w.raw ? ' — ' + w.raw : '');
+    const d = document.createElement('div');
+    d.className = w.hint ? 'warn-row warn-hint' : 'warn-row';
+    d.textContent = prefix + w.reason + (rawCut ? ' — ' + rawCut : '');
+    d.title = fullText; // voller, ungekürzter Text als natives Hover-Tooltip
+    if (w.lineNum > 0) {
+      d.style.cursor = 'pointer';
+      d.addEventListener('click', () => {
+        const target = document.querySelector(`#source-preview [data-line="${w.lineNum}"]`);
+        if (target) target.scrollIntoView({ block: 'center' });
+      });
+    }
+    b.appendChild(d);
+  }
+  b.style.display = 'block';
+}
+
+function renderSourcePreview(text, warnings) {
+  const wrap = document.getElementById('source-preview');
+  const pre = document.getElementById('source-preview-pre');
+  pre.replaceChildren();
+  if (!warnings || warnings.length === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+  const errorLines = new Set(warnings.map(w => w.lineNum).filter(n => n > 0));
+  const lines = text.split('\n');
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1;
+    const div = document.createElement('div');
+    div.className = errorLines.has(n) ? 'src-line src-line-error' : 'src-line';
+    div.dataset.line = String(n);
+    const ln = document.createElement('span');
+    ln.className = 'src-ln';
+    ln.textContent = String(n);
+    const txt = document.createElement('span');
+    txt.className = 'src-txt';
+    txt.textContent = lines[i] || ' ';
+    div.appendChild(ln);
+    div.appendChild(txt);
+    frag.appendChild(div);
+  }
+  pre.appendChild(frag);
+  wrap.style.display = 'block';
+  const firstError = pre.querySelector('.src-line-error');
+  if (firstError) firstError.scrollIntoView({ block: 'center' });
+}
+
+function processInput(text) {
+  // Jeder Edit/Reload zeigt Warnungen wieder, auch wenn sie inhaltlich gleich
+  // dem letzten Dismiss sind („Edit gemacht → Status neu prüfen").
+  _warnDismissed = false;
+  if (!text.trim()) {
+    const svgWrap = document.getElementById('svg-wrap');
+    svgWrap.replaceChildren();
+    showWarnings([], null);
+    renderSourcePreview('', []);
+    state.parsed = null;
+    state.cp = { criticalNodes: new Set(), criticalEdges: new Set(), cycleDetected: false };
+    return;
+  }
+  // Komplette Pipeline in lokalen Variablen — wird erst nach Erfolg atomar in den State übernommen.
+  // Bei jedem Fehler in dieser Kette bleibt der zuletzt erfolgreiche Stand (state.parsed, state.cp,
+  // wStart/wEnd/ppd) und damit das bestehende SVG vollständig unangetastet.
+  let nextParsed, nextCp, nextStart, nextEnd, nextPpd, warnings;
+  try {
+    walkCapHits = 0;
+    nextParsed = parsePlantUML(text);
+    resolveItems(nextParsed.rawItems, nextParsed.closedDates, nextParsed.closedWeekdays, nextParsed.openOverrides);
+    nextCp = computeCriticalPath(nextParsed.rawItems);
+    warnings = [...(nextParsed.parseWarnings || [])];
+    if (walkCapHits > 0) {
+      warnings.push({
+        lineNum: 0, raw: '',
+        reason: 'Arbeitstage-Offset nicht berechenbar: Kalender hat keinen offenen Tag (alle Wochentage closed/pauses) — Offset wurde in Kalendertagen angesetzt.',
+        hint: 'Mindestens einen Wochentag nicht als closed markieren.',
+      });
+    }
+    if (nextCp.cycleDetected) {
+      const cn = nextCp.cycleDetails || [];
+      const namesList = cn.map(d => `[${d.name}]`).join(', ');
+      const lineNums = cn.map(d => d.sourceLine).filter(n => n > 0);
+      const firstLine = lineNums.length ? Math.min(...lineNums) : 0;
+      warnings.push({
+        lineNum: firstLine, raw: '',
+        reason: 'Zyklus im Abhängigkeitsgraph (kritischer Pfad nicht bestimmbar): ' + namesList,
+      });
+    }
+    for (const it of nextParsed.rawItems) {
+      if (it.parseError) {
+        warnings.push({
+          lineNum: it.sourceLine || 0, raw: '',
+          reason: `Syntaxfehler in Task '[${it.name}]'`,
+        });
+      }
+    }
+    // sameRowAs-Validierung: Ziel muss ein existierendes Task/Milestone sein, das selbst
+    // kein sameRowAs hat (Ketten nicht unterstützt) — sonst würde der Task im Rendering
+    // sonst stillschweigend verschwinden (buildSVG() zeigt ihn zwar trotzdem als eigene
+    // Standalone-Zeile, aber der Nutzer sollte wissen, warum es nicht die gewünschte Zeile ist).
+    {
+      const byNameOrLabel = Object.create(null);
+      for (const it of nextParsed.rawItems) {
+        if (it.type !== 'task' && it.type !== 'milestone') continue;
+        if (it.name) byNameOrLabel[it.name] = it;
+        if (it.label) byNameOrLabel[it.label] = it;
+      }
+      for (const it of nextParsed.rawItems) {
+        if (!it.sameRowAs) continue;
+        const host = byNameOrLabel[it.sameRowAs];
+        if (!host) {
+          warnings.push({
+            lineNum: it.sourceLine || 0, raw: '',
+            reason: `'displays on same row as [${it.sameRowAs}]' für '[${it.name}]' nicht auflösbar — Ziel existiert nicht. Wird als eigene Zeile angezeigt.`,
+          });
+        } else if (host.sameRowAs) {
+          warnings.push({
+            lineNum: it.sourceLine || 0, raw: '',
+            reason: `'displays on same row as [${it.sameRowAs}]' für '[${it.name}]' zeigt auf ein Item, das selbst 'displays on same row as' verwendet (Ketten werden nicht unterstützt). Wird als eigene Zeile angezeigt.`,
+          });
+        }
+      }
+    }
+    if (nextParsed.rawItems._unresolvedCycle?.length) {
+      warnings.push({
+        lineNum: 0, raw: '',
+        reason: `Zyklus im Abhängigkeitsgraph (unresolved): ${nextParsed.rawItems._unresolvedCycle.map(n => `[${n}]`).join(' → ')}`,
+      });
+    }
+    if (nextParsed.rawItems._unresolvedDetails?.length) {
+      for (const d of nextParsed.rawItems._unresolvedDetails) {
+        warnings.push({
+          lineNum: d.sourceLine || 0, raw: '',
+          reason: `Abhängigkeit '[${d.afterTask}]' für '[${d.name}]' nicht auflösbar`,
+        });
+      }
+    }
+    if (nextCp.isolatedItems?.length) {
+      for (const i of nextCp.isolatedItems) {
+        warnings.push({
+          lineNum: i.sourceLine || 0, raw: '', hint: true,
+          reason: `Isoliertes Item '[${i.name}]' — kein Vorgänger, kein Nachfolger, keine Abhängigkeit. Beabsichtigt?`,
+        });
+      }
+    }
+    if (nextCp.planConflicts?.length) {
+      for (const c of nextCp.planConflicts) {
+        warnings.push({
+          lineNum: c.sourceLine || 0, raw: '',
+          reason: `Plan-Konflikt: '[${c.to}]' beginnt am ${dateToISO(c.toStart)}, aber Vorgänger '[${c.from}]' endet erst am ${dateToISO(c.fromEnd)}.`,
+        });
+      }
+    }
+    // Lint: kalendarischer Offset bei aktiven closed-Direktiven — Hinweis auf `working days`
+    // nur, wenn der Offset-Zeitraum tatsächlich einen closed-Tag enthält. Reiner Werktags-
+    // Offset (z. B. Mo→Mi mit aktiven sat/sun closed, aber kein closed-Tag im Mo→Mi-Bereich)
+    // ist Calendar und Working semantisch identisch → keine Warnung.
+    if (nextParsed.closedDates.size || nextParsed.closedWeekdays.size) {
+      const taskByName = Object.create(null);
+      for (const it of nextParsed.rawItems) if (it.name) taskByName[it.name] = it;
+      for (const it of nextParsed.rawItems) {
+        if (it.type !== 'task' || !it.afterTask || (it.offset || 0) <= 0 || it.offsetWorkDays) continue;
+        const dep = taskByName[it.afterTask];
+        const depRef = dep ? (dep.type === 'milestone' ? dep.date : (it.afterWhat === 'start' ? dep.start : dep.end)) : null;
+        if (!depRef) continue;
+        let hasClosed = false;
+        for (let i = 1; i <= it.offset; i++) {
+          const day = addDays(depRef, i);
+          const iso = dateToISO(day);
+          const dow = day.getDay();
+          const overrideOpen = nextParsed.openOverrides && nextParsed.openOverrides.has(iso);
+          if (!overrideOpen && (nextParsed.closedWeekdays.has(dow) || nextParsed.closedDates.has(iso))) {
+            hasClosed = true; break;
+          }
+        }
+        if (!hasClosed) continue;
+        warnings.push({
+          lineNum: it.sourceLine || 0, raw: '', hint: true,
+          reason: `'[${it.name}]': Offset von ${it.offset} Tagen überspannt closed-Tage (PlantUML-Spec: Calendar-Offset). Für Arbeitstage stattdessen 'starts ${it.offset} working days after …' verwenden.`,
+        });
+      }
+    }
+    const win = autoWindow(nextParsed.rawItems);
+    nextStart = win.start;
+    nextEnd = win.end;
+    nextPpd = autoZoom(nextStart, nextEnd, nextParsed.rawItems);
+    // NaN-Date / Invalid Date kaskadiert sonst stumm zu kaputten SVG-Koordinaten — hier explizit abfangen.
+    if (!(nextStart instanceof Date) || isNaN(nextStart.getTime()) ||
+        !(nextEnd   instanceof Date) || isNaN(nextEnd.getTime())) {
+      throw new Error('Ungültige Datums-Werte (Invalid Date) in der Quelle');
+    }
+    if (!Number.isFinite(nextPpd) || nextPpd <= 0) {
+      throw new Error('Ungültiger Zoom-Faktor (ppd) berechnet');
+    }
+  } catch (e) {
+    // Pipeline-Fehler: bestehendes SVG und State bleiben unangetastet.
+    showWarnings([], 'Schwerer Verarbeitungs-Fehler: ' + (e.message || e));
+    renderSourcePreview(text, []);
+    return;
+  }
+  // Atomar in den State übernehmen — entweder alle Felder gemeinsam oder gar nicht.
+  state.parsed = nextParsed;
+  state.rawText = text;
+  state.cp = nextCp;
+  // Datumsfenster nur im 'auto'-Modus überschreiben — manueller Zoom/Datums-Pick bleibt erhalten.
+  if (state.windowMode === 'auto') {
+    state.wStart = nextStart;
+    state.wEnd = nextEnd;
+    state.ppd = state.fitMode ? state.ppd : nextPpd;
+  }
+  showWarnings(warnings, null);
+  renderSourcePreview(text, warnings);
+  setDateInputs(state.wStart, state.wEnd);
+  // File-spezifische Prefs aus letzter Session anwenden (collapsed Sections, ggf. ppd/Window).
+  if (typeof restoreFileState === 'function') restoreFileState(localStorage.getItem('gantt-lastFile'));
+  // render() / applyFit() sind in sich abgesichert — Render-Fehler lassen das alte SVG stehen.
+  if (state.fitMode) applyFit();
+  else render();
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+
+function dl(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function visibleSVG() {
+  const wrap = document.getElementById('svg-wrap');
+  // querySelector finds the first SVG which may be the sticky header clone; get the direct child SVG
+  const el = wrap.querySelector(':scope > svg');
+  if (!el) return null;
+  const totalW = +el.getAttribute('width');
+  const vh = +el.getAttribute('height');
+  // Always export full diagram from x=0; 1px padding so strokes at edges aren't half-clipped
+  const PAD = 1;
+  const clone = el.cloneNode(true);
+  clone.setAttribute('viewBox', `${-PAD} ${-PAD} ${totalW + 2 * PAD} ${vh + 2 * PAD}`);
+  clone.setAttribute('width', totalW + 2 * PAD);
+  clone.setAttribute('height', vh + 2 * PAD);
+  clone.style.marginTop = '';
+  return clone;
+}
+
+function exportSVG() {
+  const el = visibleSVG();
+  if (!el) return;
+  const str = new XMLSerializer().serializeToString(el);
+  dl(new Blob([str], { type: 'image/svg+xml;charset=utf-8' }), 'gantt.svg');
+}
+
+function exportPNG() {
+  const el = visibleSVG();
+  if (!el) return;
+  const W = +el.getAttribute('width'), H = +el.getAttribute('height'), S = 4;
+  const str = new XMLSerializer().serializeToString(el);
+  const blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const c = Object.assign(document.createElement('canvas'), { width: W*S, height: H*S });
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W*S, H*S);
+    ctx.scale(S, S); ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    c.toBlob(pb => dl(pb, 'gantt.png'), 'image/png');
+  };
+  img.onerror = () => showWarnings([], 'PNG-Export fehlgeschlagen: SVG enthält möglicherweise externe Ressourcen.');
+  img.src = url;
+}
+
+let _fontCSS = null;
+
+async function loadEmbeddedFont() {
+  if (_fontCSS !== null) return _fontCSS;
+  const cached = await idbGet('fontCSS_v2');
+  if (cached) { _fontCSS = cached; return _fontCSS; }
+  try {
+    const css = await fetch('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap').then(r => r.text());
+    const urls = [...css.matchAll(/url\(([^)]+\.woff2[^)]*)\)/g)].map(m => m[1].replace(/['"]/g, ''));
+    let result = css;
+    const replacements = await Promise.all(urls.map(async url => {
+      const buf = await fetch(url).then(r => r.arrayBuffer());
+      const bytes = new Uint8Array(buf);
+      let raw = '';
+      for (let i = 0; i < bytes.length; i += 8192) raw += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      const b64 = btoa(raw);
+      return { url, b64 };
+    }));
+    for (const { url, b64 } of replacements) {
+      result = result.replace(url, `data:font/woff2;base64,${b64}`);
+    }
+    _fontCSS = result;
+    await idbSet('fontCSS_v2', result);
+  } catch(e) {
+    _fontCSS = '';
+  }
+  return _fontCSS;
+}
+
+async function exportPDF() {
+  const wrap = document.getElementById('svg-wrap');
+  const el = wrap.querySelector(':scope > svg');
+  if (!el) return;
+  const totalW = +el.getAttribute('width');
+  const totalH = +el.getAttribute('height');
+  const clone = el.cloneNode(true);
+  clone.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
+  clone.setAttribute('width', '287mm');
+  clone.setAttribute('height', '200mm');
+  clone.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  clone.style.marginTop = '';
+  const fontCSS = await loadEmbeddedFont();
+  const title = (state.parsed && state.parsed.title) || '';
+  const svgStr = new XMLSerializer().serializeToString(clone);
+  const win = window.open('', '_blank');
+  if (!win) { showWarnings([], 'Popup wurde vom Browser blockiert. Bitte Popups für diese Seite erlauben.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title) || 'Gantt'}</title><style>@page{size:A4 landscape;margin:5mm}*{margin:0;padding:0}body{width:287mm;height:200mm;overflow:hidden}${fontCSS}</style></head><body>${svgStr}<script>window.print()<\/script></body></html>`);
+  win.document.close();
+}
+
+// Eigenständige HTML-Datei mit fest eingebettetem Diagramm, für Weitergabe ohne
+// Ordnerzugriff. Serialisiert das laufende Dokument selbst (Head + Body inkl. des
+// unveränderten <script>-Texts) und ersetzt den EMBEDDED_SOURCE-Platzhalter per
+// String-Replace — kein Fetch nötig, funktioniert daher auch unter file://.
+function exportHTML() {
+  if (state.rawText == null) { showWarnings([], 'Kein Diagramm geladen — nichts zu exportieren.'); return; }
+  // innerHTML serialisiert nur Content-Attribute, nicht den Live-Zustand von
+  // Checkboxen/Datumsfeldern — deshalb vor dem Export einmal spiegeln.
+  for (const id of ['chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical']) {
+    const el = document.getElementById(id);
+    el.toggleAttribute('checked', el.checked);
+  }
+  for (const id of ['date-from', 'date-to']) {
+    const el = document.getElementById(id);
+    el.setAttribute('value', el.value);
+  }
+  // Suchstring aus Teilen zusammengesetzt, damit dieser Aufruf nicht versehentlich
+  // sich selbst matcht (sein eigener Quelltext landet ja mit im innerHTML) — sonst
+  // träfe .replace() die erste Fundstelle, die dieser String-Literal-Text selbst ist,
+  // statt der echten Deklaration weiter oben im Skript.
+  const placeholder = 'let ' + 'EMBEDDED_SOURCE = null;';
+  // '<' im JSON-String escapen: <script> ist ein HTML-Rohtext-Element, der Tokenizer kennt
+  // keine JS-String-Quotierung — ein rohes `</script` irgendwo im .puml-Text (Kommentar/
+  // Notiz/Titel) würde das Script-Tag der exportierten Datei sonst vorzeitig beenden.
+  const embeddedJson = JSON.stringify(state.rawText).replace(/</g, '\\u003c');
+  const bodyHTML = document.body.innerHTML.replace(
+    placeholder,
+    // Funktions-Form: String.replace würde bei einem String als 2. Argument IMMER
+    // GetSubstitution ausführen — $&/$`/$' im .puml-Text könnten sonst fremden
+    // innerHTML-Inhalt in den Export spleißen. Eine Funktion umgeht das vollständig.
+    () => `let EMBEDDED_SOURCE = ${embeddedJson};`
+  );
+  const html = `<!DOCTYPE html>\n<html lang="de">\n<head>\n${document.head.innerHTML}\n</head>\n<body>\n${bodyHTML}\n</body>\n</html>\n`;
+  dl(new Blob([html], { type: 'text/html;charset=utf-8' }), 'gantt-export.html');
+}
+
+// ─── IDB helpers ──────────────────────────────────────────────────────────────
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('gantt-renderer', 3);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      // history-Store war ein verworfener Versuch (F4) — aufräumen, falls aus v2 vorhanden.
+      if (db.objectStoreNames.contains('history')) db.deleteObjectStore('history');
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction('kv').objectStore('kv').get(key);
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction('kv','readwrite').objectStore('kv').put(val, key);
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+// ─── File Loader ──────────────────────────────────────────────────────────────
+
+// Von exportHTML() gesetzter Platzhalter: null im Normalbetrieb, im exportierten
+// File per String-Replace durch den eingebetteten Quelltext ersetzt (siehe exportHTML()).
+let EMBEDDED_SOURCE = null;
+
+let dirHandle = null;
+let currentFileHandle = null;
+let lastModified = null;
+let autoReloadTimer = null;
+
+function startAutoReload() {
+  if (autoReloadTimer) return;
+  autoReloadTimer = setInterval(async () => {
+    if (!currentFileHandle) return;
+    try {
+      const file = await currentFileHandle.getFile();
+      if (lastModified !== null && file.lastModified !== lastModified) {
+        lastModified = file.lastModified;
+        processInput(await file.text());
+      }
+    } catch(e) { console.warn('Auto-Reload Fehler:', e); }
+  }, 1000);
+}
+
+function stopAutoReload() {
+  clearInterval(autoReloadTimer);
+  autoReloadTimer = null;
+}
+
+async function refreshFileList() {
+  const sel = document.getElementById('file-select');
+  sel.innerHTML = '<option value="">— Datei wählen —</option>';
+  const names = [];
+  for await (const [name, handle] of dirHandle.entries())
+    if (handle.kind === 'file' && name.endsWith('.puml')) names.push(name);
+  names.sort().forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  document.getElementById('file-hint').textContent =
+    names.length ? `${names.length} Datei${names.length > 1 ? 'en' : ''} gefunden`
+                 : 'Keine .puml-Dateien gefunden';
+}
+
+async function loadCurrentFile() {
+  if (!currentFileHandle) return;
+  try {
+    const file = await currentFileHandle.getFile();
+    lastModified = file.lastModified;
+    processInput(await file.text());
+  } catch(e) { showWarnings([], 'Datei konnte nicht gelesen werden: ' + e.message); }
+}
+
+async function restoreDir() {
+  try {
+    const handle = await idbGet('dirHandle');
+    if (!handle) return;
+    if (await handle.requestPermission({ mode: 'read' }) !== 'granted') return;
+    dirHandle = handle;
+    await refreshFileList();
+    const last = localStorage.getItem('gantt-lastFile');
+    const sel = document.getElementById('file-select');
+    if (last && [...sel.options].some(o => o.value === last)) {
+      sel.value = last;
+      currentFileHandle = await dirHandle.getFileHandle(last);
+      await loadCurrentFile();
+    }
+  } catch(e) { /* kein gespeicherter Ordner */ }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+// Persistenz für UI-Einstellungen. Verzeichnis-Handle ist bereits in IndexedDB,
+// die letzte Datei in localStorage (gantt-lastFile). Hier kommen die Toggles + UI-State dazu.
+const PREF_KEYS = ['chk-autoreload', 'chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical'];
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem('gantt-prefs');
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    for (const k of PREF_KEYS) {
+      if (k in p) { const el = document.getElementById(k); if (el) el.checked = !!p[k]; }
+    }
+    if (typeof p.fitMode === 'boolean') state.fitMode = p.fitMode;
+    if (typeof p.panelLeftW === 'number' && p.panelLeftW > 100 && p.panelLeftW < 800) {
+      const pl = document.getElementById('panel-left');
+      if (pl) pl.style.width = p.panelLeftW + 'px';
+    }
+  } catch { /* corrupt JSON, ignore */ }
+}
+function savePrefs() {
+  // Globale Prefs (UI-Toggles + Splitter + fitMode)
+  try {
+    const p = {};
+    for (const k of PREF_KEYS) { const el = document.getElementById(k); if (el) p[k] = el.checked; }
+    p.fitMode = !!state.fitMode;
+    const pl = document.getElementById('panel-left');
+    if (pl) p.panelLeftW = pl.offsetWidth;
+    localStorage.setItem('gantt-prefs', JSON.stringify(p));
+  } catch { /* quota or disabled, ignore */ }
+  // Pro-Datei-Prefs (collapsed Sections, Zoom-Level, Datumsfenster)
+  saveFilePrefs();
+}
+
+function saveFilePrefs() {
+  const filename = localStorage.getItem('gantt-lastFile');
+  if (!filename || !state.parsed) return;
+  try {
+    const raw = localStorage.getItem('gantt-file-prefs');
+    const dict = raw ? JSON.parse(raw) : {};
+    dict[filename] = {
+      collapsedSections: [...state.collapsedSections],
+      ppd: state.ppd,
+      windowMode: state.windowMode,
+      wStart: state.wStart ? dateToISO(state.wStart) : null,
+      wEnd: state.wEnd ? dateToISO(state.wEnd) : null,
+    };
+    localStorage.setItem('gantt-file-prefs', JSON.stringify(dict));
+  } catch {}
+}
+
+function restoreFileState(filename) {
+  if (!filename || !state.parsed) return;
+  try {
+    const raw = localStorage.getItem('gantt-file-prefs');
+    if (!raw) return;
+    const f = JSON.parse(raw)[filename];
+    if (!f) return;
+    if (Array.isArray(f.collapsedSections)) state.collapsedSections = new Set(f.collapsedSections);
+    if (f.windowMode === 'manual' && f.wStart && f.wEnd) {
+      state.windowMode = 'manual';
+      state.wStart = parseDate(f.wStart);
+      state.wEnd = parseDate(f.wEnd);
+      setDateInputs(state.wStart, state.wEnd);
+    }
+    if (typeof f.ppd === 'number' && f.ppd > 0 && !state.fitMode) {
+      state.ppd = f.ppd;
+    }
+  } catch {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  loadPrefs();
+  if (EMBEDDED_SOURCE !== null) {
+    document.querySelectorAll('.io-ctrl').forEach(el => el.style.display = 'none');
+    const firstIoCtrl = document.querySelector('.io-ctrl');
+    if (firstIoCtrl) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:10px;color:#aaa;margin-top:-2px;margin-bottom:4px';
+      note.textContent = 'Statischer Export — Diagramm fest eingebettet, keine Ordneranbindung';
+      firstIoCtrl.parentNode.insertBefore(note, firstIoCtrl);
+    }
+    processInput(EMBEDDED_SOURCE);
+  } else {
+    restoreDir();
+    startAutoReload();
+  }
+
+  document.getElementById('btn-pick-dir').addEventListener('click', async () => {
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+      await idbSet('dirHandle', dirHandle);
+      await refreshFileList();
+    } catch(e) { /* abgebrochen */ }
+  });
+
+  document.getElementById('file-select').addEventListener('change', async e => {
+    const name = e.target.value;
+    if (!name || !dirHandle) return;
+    localStorage.setItem('gantt-lastFile', name);
+    currentFileHandle = await dirHandle.getFileHandle(name);
+    // Neue Datei → auto-Modus, sonst würde das alte manuelle Fenster auf das neue Projekt angewandt.
+    state.windowMode = 'auto';
+    await loadCurrentFile();
+  });
+
+  document.getElementById('btn-reload').addEventListener('click', loadCurrentFile);
+
+  document.getElementById('chk-autoreload').addEventListener('change', e => {
+    e.target.checked ? startAutoReload() : stopAutoReload();
+    savePrefs();
+  });
+
+  for (const id of ['chk-milestones', 'chk-notes', 'chk-deps', 'chk-curved', 'chk-critical']) {
+    document.getElementById(id).addEventListener('change', () => { savePrefs(); render(); });
+  }
+  document.getElementById('btn-zoom-100').addEventListener('click', () => {
+    state.fitMode = false;
+    state.ppd = BAR_H;
+    savePrefs();
+    render();
+  });
+
+  document.getElementById('btn-collapse-all').addEventListener('click', () => {
+    if (!state.parsed) return;
+    for (const it of state.parsed.rawItems) {
+      if (it.type === 'section') state.collapsedSections.add(it.name);
+    }
+    savePrefs();
+    render();
+  });
+  document.getElementById('btn-expand-all').addEventListener('click', () => {
+    state.collapsedSections.clear();
+    savePrefs();
+    render();
+  });
+
+  function toggleSection(name) {
+    if (state.collapsedSections.has(name)) state.collapsedSections.delete(name);
+    else state.collapsedSections.add(name);
+    savePrefs();
+    render();
+  }
+
+  document.getElementById('svg-wrap').addEventListener('click', e => {
+    // Section-Header → Collapse-Toggle
+    const sec = e.target.closest('[data-section-name]');
+    if (sec) {
+      toggleSection(sec.getAttribute('data-section-name'));
+      return;
+    }
+    // Bar/Milestone → Freeze: Tooltip aus, Highlight bleibt sticky.
+    // stopPropagation verhindert, dass der document-Click-Handler direkt wieder auftaut.
+    const barEl = e.target.closest('[data-key]');
+    if (barEl) {
+      _frozen = true;
+      tip.style.display = 'none';
+      e.stopPropagation();
+    }
+  });
+
+  // Tastatur-Äquivalent zum Section-Header-Klick (Enter/Space) — Section-Header sind
+  // fokussierbare SVG-<g>-Elemente (tabindex="0", siehe buildSVG()).
+  document.getElementById('svg-wrap').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const sec = e.target.closest('[data-section-name]');
+    if (!sec) return;
+    e.preventDefault();
+    toggleSection(sec.getAttribute('data-section-name'));
+  });
+
+  document.getElementById('date-from').addEventListener('change', e => {
+    if (!e.target.value) return;
+    const d = parseDate(e.target.value);
+    if (state.wEnd && d >= state.wEnd) {
+      showWarnings([], 'Ungültiges Zeitfenster: "Von" muss vor "Bis" liegen.');
+      setDateInputs(state.wStart, state.wEnd);
+      return;
+    }
+    state.wStart = d; state.windowMode = 'manual'; savePrefs(); render();
+  });
+  document.getElementById('date-to').addEventListener('change', e => {
+    if (!e.target.value) return;
+    const d = parseDate(e.target.value);
+    if (state.wStart && d <= state.wStart) {
+      showWarnings([], 'Ungültiges Zeitfenster: "Bis" muss nach "Von" liegen.');
+      setDateInputs(state.wStart, state.wEnd);
+      return;
+    }
+    state.wEnd = d; state.windowMode = 'manual'; savePrefs(); render();
+  });
+
+  document.getElementById('btn-zoom-in').addEventListener('click', () => {
+    if (!state.ppd) return;
+    state.fitMode = false; state.ppd = Math.min(200, state.ppd * 1.35); savePrefs(); render();
+  });
+  document.getElementById('btn-zoom-out').addEventListener('click', () => {
+    if (!state.ppd) return;
+    state.fitMode = false; state.ppd = Math.max(0.2, state.ppd / 1.35); savePrefs(); render();
+  });
+  document.getElementById('btn-fit-page').addEventListener('click', fitToPage);
+
+  document.getElementById('btn-export-svg').addEventListener('click', exportSVG);
+  document.getElementById('btn-export-png').addEventListener('click', exportPNG);
+  document.getElementById('btn-export-pdf').addEventListener('click', exportPDF);
+  document.getElementById('btn-export-html').addEventListener('click', exportHTML);
+
+  // Panel collapse
+  const panelLeft = document.getElementById('panel-left');
+  const btnCollapse = document.getElementById('btn-collapse');
+  let collapsed = false, savedW = panelLeft.offsetWidth;
+
+  btnCollapse.addEventListener('click', e => {
+    e.stopPropagation();
+    collapsed = !collapsed;
+    if (collapsed) {
+      savedW = panelLeft.offsetWidth;
+      panelLeft.style.width   = '0';
+      panelLeft.style.minWidth = '0';
+      panelLeft.style.padding  = '0';
+      panelLeft.style.overflow = 'hidden';
+    } else {
+      panelLeft.style.width   = savedW + 'px';
+      panelLeft.style.minWidth = '';
+      panelLeft.style.padding  = '';
+      panelLeft.style.overflow = '';
+    }
+    btnCollapse.textContent = collapsed ? '▶' : '◀';
+    btnCollapse.title = collapsed ? 'Panel ausklappen' : 'Panel einklappen';
+  });
+
+  // Nach Abschluss der width-Transition des linken Panels neu fitten,
+  // damit `applyFit` die finale clientWidth des SVG-Wraps liest, nicht die alte.
+  panelLeft.addEventListener('transitionend', e => {
+    if (e.propertyName === 'width' && state.fitMode) applyFit();
+  });
+
+  // Splitter drag
+  const splitter = document.getElementById('splitter');
+  let dragging = false, startX = 0, startW = 0;
+
+  let _dragFitPending = false;
+  splitter.addEventListener('mousedown', e => {
+    if (e.target === btnCollapse) return;
+    dragging = true; startX = e.clientX; startW = panelLeft.offsetWidth;
+    splitter.classList.add('dragging');
+    // CSS-transition (für den diskreten Collapse-Toggle gedacht) würde sonst gegen
+    // jede Live-Breitenänderung ankämpfen und den Drag lag/rubberbanden lassen.
+    panelLeft.classList.add('no-transition');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.max(160, Math.min(window.innerWidth * 0.6, startW + e.clientX - startX));
+    panelLeft.style.width = w + 'px';
+    // Der teure Re-Render (applyFit → buildSVG + zwei Sticky-Overlay-Klone) wird pro Frame
+    // gebündelt statt bei jedem einzelnen mousemove-Event synchron ausgeführt.
+    if (state.fitMode && !_dragFitPending) {
+      _dragFitPending = true;
+      requestAnimationFrame(() => { _dragFitPending = false; if (dragging) applyFit(); });
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging');
+    panelLeft.classList.remove('no-transition');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    savePrefs();
+  });
+
+  // ── Tooltip ──────────────────────────────────────────────────────────────────
+  const tip = document.getElementById('gantt-tooltip');
+
+  function fmtTipDate(iso) {
+    const d = parseDate(iso);
+    return `${DOW_LONG[d.getDay()]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  const svgWrap = document.getElementById('svg-wrap');
+
+  // Hover-Highlighting für Dependency-Pfeile (UI-Feature, kein PlantUML-Konzept).
+  // — Hover auf Pfeil:  diesen Pfeil hervorheben + Tooltip "From → To" (Form).
+  // — Hover auf Bar/Milestone: alle ein- und abgehenden Pfeile hervorheben + Tooltip.
+  // — Klick auf Bar/Milestone:  Freeze-Modus an — Tooltip aus, Highlight bleibt sticky.
+  //   Klick irgendwo sonst:     Freeze aus → nächster Hover zeigt wieder Tooltip+Highlight.
+  let _hlArrows = [];
+  let _frozen = false;
+  let _hl2Arrows = [];
+  let _hl2Bars = [];
+  function clearHl2() {
+    for (const a of _hl2Arrows) a.classList.remove('hl2');
+    for (const b of _hl2Bars) b.classList.remove('hl2');
+    _hl2Arrows = [];
+    _hl2Bars = [];
+  }
+  function clearArrowHl() {
+    for (const el of _hlArrows) el.classList.remove('hl');
+    _hlArrows = [];
+    clearHl2();
+  }
+  // Markiert eine Auswahl von Pfeilen als hl2 und zusätzlich die Bars an
+  // ihren Enden. Identische Auswahl ist No-Op (verhindert DOM-Trash bei jedem
+  // mousemove). Wird im Pin-Modus aus zwei Quellen gespeist:
+  //   (1) Hover über eine gepinnte Linie → nur dieser Pfeil + seine 2 Bars
+  //   (2) Hover über eine verbundene Bar → alle gepinnten Pfeile, die diese
+  //       Bar als from/to haben, + alle Bars an deren Enden
+  function setHl2Arrows(arrows) {
+    const same = arrows.length === _hl2Arrows.length
+      && arrows.every((a, i) => a === _hl2Arrows[i]);
+    if (same) return;
+    clearHl2();
+    if (arrows.length === 0) return;
+    const barKeys = new Set();
+    for (const arr of arrows) {
+      arr.classList.add('hl2');
+      _hl2Arrows.push(arr);
+      const from = arr.getAttribute('data-from');
+      const to   = arr.getAttribute('data-to');
+      if (from) barKeys.add(from);
+      if (to)   barKeys.add(to);
+    }
+    for (const key of barKeys) {
+      const bar = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+      if (bar) { bar.classList.add('hl2'); _hl2Bars.push(bar); }
+    }
+  }
+  // Wird von render() aufgerufen, damit Highlights nicht über Re-Renders stale werden.
+  window.__resetDepHover = () => {
+    _hlArrows = [];
+    _frozen = false;
+    _hl2Arrows = [];
+    _hl2Bars = [];
+  };
+  function setArrowHl(arr) {
+    if (arr.length === _hlArrows.length && arr.every((el, i) => el === _hlArrows[i])) return;
+    clearArrowHl();
+    for (const el of arr) { el.classList.add('hl'); _hlArrows.push(el); }
+  }
+  function labelOfKey(key) {
+    // Schau in einer Bar/Milestone mit data-key nach dem Display-Label.
+    const el = svgWrap.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    return el ? el.getAttribute('data-name') : key;
+  }
+
+  // Baut den Tooltip für eine Bar/Milestone auf und positioniert ihn bei (clientX, clientY).
+  // Wird von mousemove UND von focusin (Tastatur-Fokus auf eine [data-key]-Gruppe) genutzt —
+  // damit sind Start/Ende/Dauer/Fortschritt/Vorgänger/Nachfolger auch ohne Maus erreichbar.
+  function showBarTooltip(el, clientX, clientY) {
+    const elKey = el.getAttribute('data-key');
+    if (elKey) {
+      const sel = `.dep-arrow[data-from="${CSS.escape(elKey)}"], .dep-arrow[data-to="${CSS.escape(elKey)}"]`;
+      setArrowHl([...svgWrap.querySelectorAll(sel)]);
+    } else {
+      clearArrowHl();
+    }
+    const name = el.getAttribute('data-name');
+    const sec  = el.getAttribute('data-section');
+    tip.replaceChildren();
+    const b = document.createElement('b');
+    b.textContent = name;
+    tip.appendChild(b);
+    if (sec) {
+      const sp = document.createElement('span');
+      sp.style.cssText = 'display:block;font-size:11px;color:#8ab4cc;margin-bottom:5px';
+      sp.textContent = sec;
+      tip.appendChild(sp);
+    }
+    if (el.dataset.ms) {
+      tip.appendChild(document.createTextNode(`Datum: ${fmtTipDate(el.dataset.ms)}`));
+    } else {
+      tip.appendChild(document.createTextNode(`Start: ${fmtTipDate(el.dataset.start)}`));
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Ende:  ${fmtTipDate(el.dataset.end)}`));
+      tip.appendChild(document.createElement('br'));
+      // Dauer = Kalender-Span zwischen Start und Ende. Format: "17 Tage: 2 Wochen, 3 Tage" —
+      // präzise Aufschlüsselung (keine Rundung), 1 Woche = 7 Tage fest. Bei Dauer < 7 oder
+      // glatt durch 7 wird die Aufschlüsselung weggelassen.
+      const days = daysBetween(parseDate(el.dataset.start), parseDate(el.dataset.end));
+      const wks = Math.floor(days / 7);
+      const rest = days - wks * 7;
+      let durLine = `Dauer: ${days} ${days === 1 ? 'Tag' : 'Tage'}`;
+      if (wks > 0 && rest > 0) {
+        durLine += `: ${wks} ${wks === 1 ? 'Woche' : 'Wochen'}, ${rest} ${rest === 1 ? 'Tag' : 'Tage'}`;
+      } else if (wks > 0) {
+        durLine += `: ${wks} ${wks === 1 ? 'Woche' : 'Wochen'}`;
+      }
+      tip.appendChild(document.createTextNode(durLine));
+      if (el.dataset.pct) {
+        tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(`Fortschritt: ${el.dataset.pct}%`));
+      }
+    }
+    if (el.dataset.preds) {
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Vorgänger: ${el.dataset.preds.split('|').map(n => `[${n}]`).join(', ')}`));
+    }
+    if (el.dataset.succs) {
+      tip.appendChild(document.createElement('br'));
+      tip.appendChild(document.createTextNode(`Nachfolger: ${el.dataset.succs.split('|').map(n => `[${n}]`).join(', ')}`));
+    }
+    // Notiz am Task/Milestone (data-note auf dem <g>) anhängen — funktioniert auch bei ausgeblendetem Notizen-Toggle.
+    const note = el.getAttribute('data-note');
+    if (note) {
+      tip.appendChild(document.createElement('br'));
+      const noteLbl = document.createElement('span');
+      noteLbl.style.cssText = 'display:block;font-size:11px;color:#8ab4cc;margin-top:5px';
+      noteLbl.textContent = 'Notiz';
+      tip.appendChild(noteLbl);
+      const ln = note.split('\n');
+      for (let i = 0; i < ln.length; i++) {
+        if (i > 0) tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(ln[i]));
+      }
+    }
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let lx = clientX + 16, ly = clientY + 12;
+    if (lx + tw > window.innerWidth  - 8) lx = clientX - tw - 8;
+    if (ly + th > window.innerHeight - 8) ly = clientY - th - 8;
+    // Clamp gegen links/oben — bei kollabiertem Panel oder Fokus nahe der Kante kann der
+    // Flip sonst negativ werden (Tooltip teilweise außerhalb des Viewports).
+    lx = Math.max(8, lx); ly = Math.max(8, ly);
+    tip.style.left = lx + 'px';
+    tip.style.top  = ly + 'px';
+  }
+
+  svgWrap.addEventListener('mousemove', e => {
+    // Freeze-Modus: Tooltip aus, Sticky-Highlight bleibt. Hl2 (Türkis) wird
+    // aktiviert, wenn (a) eine bereits gepinnte Linie ODER (b) eine der mit
+    // ihr verbundenen Aufgaben/Milestones gehovert wird. Bei (b) werden alle
+    // gepinnten Linien hl2, deren from/to dieser Bar entspricht, plus alle
+    // Bars an deren Enden.
+    if (_frozen) {
+      const arrow = e.target.closest('.dep-arrow');
+      if (arrow && _hlArrows.includes(arrow)) {
+        setHl2Arrows([arrow]);
+        return;
+      }
+      const bar = e.target.closest('[data-key]');
+      if (bar) {
+        const key = bar.getAttribute('data-key');
+        const matches = _hlArrows.filter(a =>
+          a.getAttribute('data-from') === key || a.getAttribute('data-to') === key
+        );
+        setHl2Arrows(matches);
+        return;
+      }
+      setHl2Arrows([]);
+      return;
+    }
+    // (a) Hover auf Dependency-Pfeil → Tooltip + Highlight
+    const arrow = e.target.closest('.dep-arrow');
+    if (arrow) {
+      setArrowHl([arrow]);
+      const from = arrow.getAttribute('data-from');
+      const to = arrow.getAttribute('data-to');
+      const form = arrow.getAttribute('data-form') || 'FS';
+      const formLabel = {FS: 'Finish→Start', SS: 'Start→Start', FF: 'Finish→Finish', SF: 'Start→Finish'}[form] || form;
+      tip.replaceChildren();
+      const bLine = document.createElement('b');
+      bLine.textContent = `${labelOfKey(from)}  →  ${labelOfKey(to)}`;
+      tip.appendChild(bLine);
+      const sp = document.createElement('span');
+      sp.style.cssText = 'display:block;font-size:11px;color:#8ab4cc';
+      sp.textContent = `Abhängigkeit (${formLabel})`;
+      tip.appendChild(sp);
+      tip.style.display = 'block';
+      const tw0 = tip.offsetWidth, th0 = tip.offsetHeight;
+      let lx0 = e.clientX + 16, ly0 = e.clientY + 12;
+      if (lx0 + tw0 > window.innerWidth  - 8) lx0 = e.clientX - tw0 - 8;
+      if (ly0 + th0 > window.innerHeight - 8) ly0 = e.clientY - th0 - 8;
+      lx0 = Math.max(8, lx0); ly0 = Math.max(8, ly0);
+      tip.style.left = lx0 + 'px'; tip.style.top = ly0 + 'px';
+      return;
+    }
+    const noteEl = e.target.closest('[data-note]');
+    if (noteEl && !noteEl.closest('[data-name]')) {
+      const full = noteEl.getAttribute('data-note');
+      tip.replaceChildren();
+      const lbl = document.createElement('b');
+      lbl.style.cssText = 'font-size:11px;color:#8ab4cc';
+      lbl.textContent = 'Notiz';
+      tip.appendChild(lbl);
+      const ln = (full || '').split('\n');
+      for (let i = 0; i < ln.length; i++) {
+        if (i > 0) tip.appendChild(document.createElement('br'));
+        tip.appendChild(document.createTextNode(ln[i]));
+      }
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let lx = e.clientX + 16, ly = e.clientY + 12;
+      if (lx + tw > window.innerWidth  - 8) lx = e.clientX - tw - 8;
+      if (ly + th > window.innerHeight - 8) ly = e.clientY - th - 8;
+      lx = Math.max(8, lx); ly = Math.max(8, ly);
+      tip.style.left = lx + 'px'; tip.style.top = ly + 'px';
+      clearArrowHl();
+      return;
+    }
+    const el = e.target.closest('[data-name]');
+    if (!el) { tip.style.display = 'none'; clearArrowHl(); return; }
+    // (b) Hover auf Bar/Milestone → alle ein- und abgehenden Pfeile hervorheben + Tooltip.
+    showBarTooltip(el, e.clientX, e.clientY);
+  });
+  svgWrap.addEventListener('mouseleave', () => {
+    // Beim Verlassen Tooltip + Highlight nur räumen, wenn NICHT eingefroren.
+    if (_frozen) return;
+    tip.style.display = 'none';
+    clearArrowHl();
+  });
+
+  // Tastatur-Äquivalent zum Bar/Milestone-Hover: Tab auf eine [data-key]-Gruppe zeigt
+  // denselben Tooltip wie Hover (Position an der Bounding-Box statt an der Maus).
+  // Pfeile bleiben bewusst maus-only (viele dünne, nicht sinnvoll fokussierbare Pfad-
+  // Elemente) — ihre Vorgänger/Nachfolger sind über den Bar-Tooltip trotzdem erreichbar.
+  svgWrap.addEventListener('focusin', e => {
+    const el = e.target.closest('[data-name]');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    showBarTooltip(el, r.left + r.width / 2, r.top + r.height / 2);
+  });
+  svgWrap.addEventListener('focusout', e => {
+    if (_frozen) return;
+    // Kein Ausblenden, wenn der Fokus zu einem anderen Chart-Element innerhalb von
+    // svg-wrap wandert (sonst Flackern zwischen zwei Tab-Stops).
+    if (e.relatedTarget && svgWrap.contains(e.relatedTarget)) return;
+    tip.style.display = 'none';
+    clearArrowHl();
+  });
+
+  // Klick irgendwo (außer auf eine Bar/Milestone — die hat stopPropagation) → Freeze aufheben.
+  // Highlight wird beim nächsten Hover ersetzt.
+  document.addEventListener('click', () => {
+    if (_frozen) {
+      _frozen = false;
+      clearArrowHl();
+    }
+  });
+
+  // ESC hebt den Pin-Modus ebenfalls auf (siehe README "Bedienung" — bisher nur per Klick möglich).
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && _frozen) {
+      _frozen = false;
+      clearArrowHl();
+      tip.style.display = 'none';
+    }
+  });
+
+  let _resizeFitPending = false;
+  window.addEventListener('resize', () => {
+    if (!state.fitMode || _resizeFitPending) return;
+    _resizeFitPending = true;
+    requestAnimationFrame(() => { _resizeFitPending = false; applyFit(); });
+  });
+
+  // Ctrl+Mausrad = Zoom, plain Mausrad = vertikaler Browser-Scroll
+  svgWrap.addEventListener('wheel', e => {
+    if (!state.ppd || !e.ctrlKey) return;
+    e.preventDefault();
+    state.fitMode = false;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newPpd = Math.max(0.2, Math.min(200, state.ppd * factor));
+    // Tag-Position unter dem Cursor vor dem Zoom
+    const cursorDay = (e.offsetX + svgWrap.scrollLeft) / state.ppd;
+    state.ppd = newPpd;
+    render();
+    // Scroll so anpassen, dass derselbe Tag unter dem Cursor bleibt
+    svgWrap.scrollLeft = cursorDay * newPpd - e.offsetX;
+  }, { passive: false });
+});
+</script>
+</body>
+</html>
