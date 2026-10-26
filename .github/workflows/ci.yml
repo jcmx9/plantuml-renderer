@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Smoke test (JS syntax, parser, CPM, date semantics, example.puml)
+        run: node scripts/smoke-test.js
+
+      - name: Shell scripts (shellcheck)
+        run: shellcheck scripts/*.sh
+
+      - name: Version and README consistency
+        run: scripts/check-consistency.sh

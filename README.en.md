@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.10.1** (2026-10-26) · German version: [README.md](README.md)
+> Current version: **v26.10.2** (2026-10-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -260,7 +260,7 @@ This table lists **every construct supported by the renderer**. Anything not lis
 
 | Syntax | Meaning |
 |---|---|
-| `[Name] starts 2026-01-01 and ends 2026-01-10` | Absolute start and end. |
+| `[Name] starts 2026-01-01 and ends 2026-01-10` | Absolute start and end dates; the end day is included (as in PlantUML). |
 | `[Name] starts 2026-01-01 and lasts 5 days` | Absolute start + duration (working days). |
 | `[Name] starts 2026-01-01 and lasts 2 weeks` | Duration in weeks (= 14 days). |
 | `[Name] requires 1 week and 4 days` | Compound duration (= 11 days; PlantUML doc standard). |
@@ -362,6 +362,18 @@ This "renderer = view, Git = manager" split keeps the renderer lean and uses est
 The repository ships [`example.puml`](example.puml) — a complete sprint example with parallel streams that exercises virtually every supported syntax form: section + subsection, alias form, absolute and relative task constraints, multiple milestone variants, `then` form, `->` arrows, `is N% completed` / `is colored in #hex/textColor` modifiers, code and block comments, and a multi-line `note bottom` note.
 
 Load the file in the renderer, enable "Highlight critical path" → the longest chain (Discovery → QA → Release) is outlined in red, while the parallel streams (auth middleware, migration) stay unmarked.
+
+---
+
+## Checks
+
+Every pull request to `main` runs the CI (`.github/workflows/ci.yml`). Run the same checks locally:
+
+```bash
+node scripts/smoke-test.js          # JS syntax, parser, critical path, date semantics, example.puml
+shellcheck scripts/*.sh             # shell scripts
+scripts/check-consistency.sh        # version identical everywhere, README parity
+```
 
 ---
 

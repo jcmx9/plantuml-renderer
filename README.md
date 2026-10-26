@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Aktuelle Version: **v26.10.1** (2026-10-26) · English version: [README.en.md](README.en.md)
+> Aktuelle Version: **v26.10.2** (2026-10-26) · English version: [README.en.md](README.en.md)
 
 Single-File-Webanwendung, die eine Teilmenge der **PlantUML-Gantt-Syntax** im Browser nativ rendert — ohne PlantUML-Server, ohne Java, ohne Backend. Live-Reload beim Editieren der `.puml`-Datei, kritischer-Pfad-Highlighting, klappbare Sections, reproduzierbarer Export, A4-Druck.
 
@@ -266,7 +266,7 @@ Diese Tabelle zeigt **alle Konstrukte, die der Renderer unterstützt**. Alles, w
 
 | Syntax                                                      | Bedeutung                                          |
 | ----------------------------------------------------------- | -------------------------------------------------- |
-| `[Name] starts 2026-01-01 and ends 2026-01-10`              | Absolute Start- und End-Daten.                     |
+| `[Name] starts 2026-01-01 and ends 2026-01-10`              | Absolute Start- und End-Daten; der Endtag zählt mit (wie in PlantUML). |
 | `[Name] starts 2026-01-01 and lasts 5 days`                 | Absoluter Start + Dauer (Arbeitstage).             |
 | `[Name] starts 2026-01-01 and lasts 2 weeks`                | Dauer in Wochen (= 14 Tage).                       |
 | `[Name] requires 1 week and 4 days`                         | Compound-Duration (= 11 Tage; PlantUML-Doku-Standard). |
@@ -368,6 +368,18 @@ Diese Trennung "Renderer = View, Git = Verwalter" hält den Renderer schlank und
 Im Repo liegt [`example.puml`](example.puml) — ein vollständiges Sprint-Beispiel mit parallelen Streams, das praktisch jede unterstützte Syntax-Form einmal zeigt: Section + Subsection, Alias-Form, absolute und relative Task-Constraints, mehrere Milestone-Varianten, `then`-Form, `->`-Pfeile, `is N% completed` / `is colored in #hex/textColor`-Modifier, Code- und Block-Kommentare sowie eine mehrzeilige `note bottom`-Notiz.
 
 Lade die Datei im Renderer, aktiviere „Kritischen Pfad hervorheben" → die längste Pfadkette (Discovery → QA → Release) ist rot umrandet, die parallelen Streams (Auth-Middleware, Migration) bleiben unmarkiert.
+
+---
+
+## Prüfungen
+
+Jeder Pull Request auf `main` durchläuft die CI (`.github/workflows/ci.yml`). Lokal laufen dieselben Prüfungen so:
+
+```bash
+node scripts/smoke-test.js          # JS-Syntax, Parser, kritischer Pfad, Datums-Semantik, example.puml
+shellcheck scripts/*.sh             # Shell-Skripte
+scripts/check-consistency.sh        # Version an allen Stellen gleich, README-Parität
+```
 
 ---
 
