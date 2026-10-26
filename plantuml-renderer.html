@@ -2266,6 +2266,15 @@ function setDateInputs(s, e) {
 
 function render() {
   if (!state.parsed || !state.wStart || !state.wEnd || !state.ppd) return;
+  // Auto-Fenster an den aktuellen Zoom anpassen: nach Zoom-Out (−, Strg+Rad, 100 %, gespeicherter
+  // ppd) bräuchten die Außen-Labels sonst mehr Tage als beim Laden berechnet. Fit-Modus hat sein
+  // Fenster bereits in fitToPage/processInput passend gerechnet; manuelle Daten bleiben unberührt.
+  if (state.windowMode === 'auto' && !state.fitMode) {
+    const win = autoWindow(state.parsed.rawItems);
+    state.wStart = win.start;
+    state.wEnd = extendForOuterLabels(state.parsed.rawItems, win.start, win.end, () => state.ppd);
+    setDateInputs(state.wStart, state.wEnd);
+  }
   if (window.__resetDepHover) window.__resetDepHover();
   let svg;
   try {
