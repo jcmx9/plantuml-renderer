@@ -1,6 +1,6 @@
 # PlantUML Gantt Renderer
 
-> Current version: **v26.10.0** (2026-10-26) · German version: [README.md](README.md)
+> Current version: **v26.10.1** (2026-10-26) · German version: [README.md](README.md)
 
 Single-file web application that renders a subset of **PlantUML Gantt syntax** natively in the browser — no PlantUML server, no Java, no backend. Live-reload while editing the `.puml` source, critical-path highlighting, collapsible sections, reproducible export, A4 print.
 
@@ -83,7 +83,17 @@ git pull
 
 ### Alternative: direct download
 
-Grab the latest release asset (`plantuml-renderer.html`) from [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) — no other files needed.
+Grab the latest release asset (`plantuml-renderer.html`) from [github.com/jcmx9/plantuml-renderer/releases/latest](https://github.com/jcmx9/plantuml-renderer/releases/latest) — no other files needed. Direct link to the current file:
+
+```bash
+curl -fLO https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html
+```
+
+```powershell
+Invoke-WebRequest https://github.com/jcmx9/plantuml-renderer/releases/latest/download/plantuml-renderer.html -OutFile plantuml-renderer.html
+```
+
+> **Caution:** Do not save GitHub's file view (`github.com/…/blob/main/plantuml-renderer.html`) via "Save page as" — that stores the GitHub web page (several MB, full of `<link rel="dns-prefetch">`/`modulepreload` elements) instead of the renderer. Opened locally, it pulls in loads of GitHub resources and ends up in *"Whoa there! You have triggered an abuse detection mechanism."* The real file is about 160 KB and starts with `<!DOCTYPE html>` / `<html lang="de">`.
 
 ---
 

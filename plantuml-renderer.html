@@ -161,7 +161,7 @@ hr { border: none; border-top: 1px solid #eef1f4; }
 
   <div id="panel-left" style="width:290px">
     <h2>PlantUML Gantt Renderer</h2>
-    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.0</div>
+    <div style="font-size:10px;color:#aaa;margin-top:-6px;margin-bottom:4px">v26.10.1</div>
 
     <div class="section-label io-ctrl">Datei</div>
     <button class="btn btn-secondary io-ctrl" id="btn-pick-dir">Ordner wählen …</button>
@@ -2186,6 +2186,35 @@ function autoWindow(items) {
   return { start: addDays(lo, -7), end: addDays(hi, 14) };
 }
 
+// Pixel, die das Label rechts über das Item-Ende hinausragt (0, wenn es in den Balken
+// passt) — spiegelt die Label-Platzierung in buildSVG (Task bold, Meilenstein semibold).
+function outerLabelOverhang(it, ppd) {
+  const name = it.label || it.name || '';
+  if (it.type === 'milestone') return 9 + 5 + approxTextW(name, FS, 600);
+  const tw = approxTextW(name, FS, 700);
+  return tw + 10 < daysBetween(it.start, it.end) * ppd ? 0 : 5 + tw;
+}
+
+// Verlängert das Auto-Fenster nach rechts, bis jedes Außen-Label bei der resultierenden
+// Zoomstufe auf die Timeline passt. Der feste Puffer aus autoWindow ist in Tagen, die
+// Labels sind in Pixeln — bei langen Projekten (kleines ppd) wurden sie sonst am rechten
+// Rand abgeschnitten. Mehr Tage → kleineres ppd → mehr Überhang in Tagen, daher iterativ.
+function extendForOuterLabels(items, start, end, ppdForDays) {
+  let days = daysBetween(start, end);
+  for (let pass = 0; pass < 20; pass++) {
+    const ppd = ppdForDays(days);
+    let need = days;
+    for (const it of items) {
+      const last = it.type === 'milestone' ? it.date : (it.type === 'task' && it.start ? it.end : null);
+      if (!last) continue;
+      need = Math.max(need, Math.ceil(daysBetween(start, last) + (outerLabelOverhang(it, ppd) + 4) / ppd));
+    }
+    if (need <= days) break;
+    days = need;
+  }
+  return addDays(start, days);
+}
+
 function autoZoom(wStart, wEnd, items) {
   const wrapEl = document.getElementById('svg-wrap');
   const w = (wrapEl && wrapEl.clientWidth) || 900;
@@ -2199,23 +2228,29 @@ function autoZoom(wStart, wEnd, items) {
   return Math.min(200, Math.max(0.5, (w - labelW - noteW - 40) / days));
 }
 
-function applyFit() {
-  if (!state.parsed || !state.wStart || !state.wEnd) return;
-  const days = daysBetween(state.wStart, state.wEnd);
+// ppd, mit dem `days` Tage exakt in die Browser-Breite passen (Fit-Modus).
+function fitPpd(days) {
   const showNotes = document.getElementById('chk-notes').checked;
   const noteW = (showNotes && state.parsed.rawItems.some(i => i.note)) ? NOTE_W : 0;
   const labelW = effectiveLabelW(state.parsed.rawItems);
   const wrap = document.getElementById('svg-wrap');
   const avail = (wrap.clientWidth || 900) - labelW - noteW - 16; // 16px Padding-Reserve
   const ppd = days > 0 ? avail / days : 200;
-  state.ppd = Math.min(200, Math.max(0.2, ppd));
+  return Math.min(200, Math.max(0.2, ppd));
+}
+
+function applyFit() {
+  if (!state.parsed || !state.wStart || !state.wEnd) return;
+  state.ppd = fitPpd(daysBetween(state.wStart, state.wEnd));
   render();
 }
 
 function fitToPage() {
   if (!state.parsed) return;
   state.windowMode = 'auto';
-  const { start, end } = autoWindow(state.parsed.rawItems);
+  const win = autoWindow(state.parsed.rawItems);
+  const start = win.start;
+  const end = extendForOuterLabels(state.parsed.rawItems, start, win.end, fitPpd);
   state.wStart = start;
   state.wEnd = end;
   setDateInputs(start, end);
@@ -2518,7 +2553,8 @@ function processInput(text) {
     }
     const win = autoWindow(nextParsed.rawItems);
     nextStart = win.start;
-    nextEnd = win.end;
+    nextEnd = extendForOuterLabels(nextParsed.rawItems, nextStart, win.end,
+      days => autoZoom(win.start, addDays(win.start, days), nextParsed.rawItems));
     nextPpd = autoZoom(nextStart, nextEnd, nextParsed.rawItems);
     // NaN-Date / Invalid Date kaskadiert sonst stumm zu kaputten SVG-Koordinaten — hier explizit abfangen.
     if (!(nextStart instanceof Date) || isNaN(nextStart.getTime()) ||
