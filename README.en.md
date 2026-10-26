@@ -365,6 +365,18 @@ Load the file in the renderer, enable "Highlight critical path" → the longest 
 
 ---
 
+## Checks
+
+Every pull request to `main` runs the CI (`.github/workflows/ci.yml`). Run the same checks locally:
+
+```bash
+node scripts/smoke-test.js          # JS syntax, parser, critical path, date semantics, example.puml
+shellcheck scripts/*.sh             # shell scripts
+scripts/check-consistency.sh        # version identical everywhere, README parity
+```
+
+---
+
 ## Browser compatibility
 
 | Browser | Status | Note |

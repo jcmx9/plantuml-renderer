@@ -371,6 +371,18 @@ Lade die Datei im Renderer, aktiviere „Kritischen Pfad hervorheben" → die l�
 
 ---
 
+## Prüfungen
+
+Jeder Pull Request auf `main` durchläuft die CI (`.github/workflows/ci.yml`). Lokal laufen dieselben Prüfungen so:
+
+```bash
+node scripts/smoke-test.js          # JS-Syntax, Parser, kritischer Pfad, Datums-Semantik, example.puml
+shellcheck scripts/*.sh             # Shell-Skripte
+scripts/check-consistency.sh        # Version an allen Stellen gleich, README-Parität
+```
+
+---
+
 ## Browser-Kompatibilität
 
 | Browser               | Status           | Anmerkung                                          |

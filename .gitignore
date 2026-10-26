@@ -10,3 +10,7 @@
 !.gitignore
 !scripts/
 !scripts/*.sh
+!scripts/*.js
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
